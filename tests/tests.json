@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Generate a coding response",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "AI coding assistant",
+      "backend AI generation",
+      "language-aware prompts",
+      "render generated output"
+    ],
+    "description": "Verifies a user can submit a coding task and receive a visible AI-generated result.",
+    "steps": [
+      "Choose Python as the language and Explain code as the mode",
+      "Enter a short code snippet or question",
+      "Submit the task"
+    ],
+    "expected": "A generated response appears in the result panel, and the form remains usable."
+  },
+  {
+    "name": "Validate empty coding requests",
+    "viewport": "mobile",
+    "covers": ["empty-input validation", "mobile coding assistant workflow"],
+    "description": "Verifies an empty request is blocked with a clear message on a mobile-sized screen.",
+    "steps": [
+      "Open the AI workspace on mobile",
+      "Leave the task field empty",
+      "Press Generate"
+    ],
+    "expected": "A visible validation message appears and no AI request is submitted."
+  },
+  {
+    "name": "Save and remove a project",
+    "viewport": "desktop",
+    "covers": [
+      "project organizer create",
+      "project organizer delete",
+      "local persistence"
+    ],
+    "description": "Verifies projects can be saved, remain after reload, and can be removed.",
+    "steps": [
+      "Open Projects",
+      "Add a project with a name and language",
+      "Refresh the page and remove the project"
+    ],
+    "expected": "The saved project is present after reload and disappears after removal."
+  },
+  {
+    "name": "Copy or recover from an AI error",
+    "viewport": "desktop",
+    "covers": [
+      "copy generated output",
+      "AI backend error handling",
+      "retry workflow"
+    ],
+    "description": "Verifies generated output has a copy action and an unsuccessful generation shows a recoverable error.",
+    "qa_faults": [
+      {
+        "method": "POST",
+        "path": "/api/assist",
+        "status": 500,
+        "body_json": {
+          "error": "simulated_failure"
+        }
+      }
+    ],
+    "steps": [
+      "Submit a coding task",
+      "When a response appears, use Copy",
+      "Submit another task while the service returns a simulated error"
+    ],
+    "expected": "The result can be copied, and a visible error message offers the user a way to retry."
+  }
+]
