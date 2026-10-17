@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '@appdeploy/client';
 import {
   Activity,
   ArrowUpRight,
@@ -141,12 +140,19 @@ function App() {
     setCopied(false);
     setResult('');
     try {
-      const response = await api.post('/api/assist', {
-        mode,
-        language,
-        task: task.trim(),
+      const response = await fetch('/api/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, language, task: task.trim() }),
       });
-      const text = response.data?.text;
+      const payload = (await response.json().catch(() => ({}))) as {
+        text?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || `AI request failed (HTTP ${response.status}).`);
+      }
+      const text = payload.text;
       if (typeof text !== 'string' || !text.trim())
         throw new Error(
           'The assistant returned an empty response. Please try again.'
