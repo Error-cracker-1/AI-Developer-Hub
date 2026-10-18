@@ -4,6 +4,7 @@ const modeInstructions: Record<string, string> = {
   'Generate code': 'Produce a robust, readable implementation. State assumptions briefly, then provide code and usage notes.',
   'Explain code': 'Explain the code in clear steps, including purpose, flow, important concepts, and potential pitfalls.',
   'Debug code': 'Diagnose likely root causes, explain why they happen, and provide a corrected solution. Do not claim to have executed the code.',
+  'AI Code Review': 'Perform a structured code review. Start with a brief overall assessment, then list findings ordered by severity (Critical, High, Medium, Low), with file/line references when the supplied content makes them reliable. For each finding explain the issue, impact, why it matters, and a concrete fix. Check correctness, edge cases, security, performance, readability, and maintainability. Avoid speculative findings; say when no issue is evident. End with prioritized recommendations and tests the developer should run. Do not claim to have executed code or verified vulnerabilities.',
   'README writer': 'Write a polished GitHub README in Markdown with headings, features, setup, usage, configuration, and examples. Do not invent facts; mark unknown details as TODO.',
   'Release notes': 'Write detailed release notes in Markdown with a suitable title, concise summary, emoji section headings, features, fixes, breaking changes if applicable, and code formatting where useful. Do not invent changes not supplied by the user.',
 };
