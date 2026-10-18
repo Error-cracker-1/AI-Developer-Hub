@@ -426,6 +426,24 @@ function App() {
                   <span /> READY
                 </span>
               </div>
+              {mode === 'AI Code Review' && (
+                <div className="review-guide" role="note">
+                  <div className="review-guide-heading">
+                    <ShieldCheck size={18} />
+                    <div>
+                      <strong>Structured code review</strong>
+                      <span>Prioritized findings with actionable fixes</span>
+                    </div>
+                  </div>
+                  <div className="review-checklist">
+                    <span><b>01</b> Bugs & edge cases</span>
+                    <span><b>02</b> Security risks</span>
+                    <span><b>03</b> Performance & maintainability</span>
+                    <span><b>04</b> Tests to run</span>
+                  </div>
+                  <p>Attach a source file or paste code below. Findings will be prioritized by severity; the AI does not execute your code.</p>
+                </div>
+              )}
               <div className="form-grid">
                 <label className="field-label">
                   LANGUAGE / STACK
@@ -464,9 +482,11 @@ function App() {
                   value={task}
                   onChange={event => setTask(event.target.value)}
                   placeholder={
-                    mode === 'Explain code'
-                      ? 'Paste your code here, ask a question, or attach a code file above…'
-                      : mode === 'Debug code'
+                    mode === 'AI Code Review'
+                      ? 'Paste code or attach a file. Tell us what to prioritize: correctness, security, performance, edge cases, or maintainability…'
+                      : mode === 'Explain code'
+                        ? 'Paste your code here, ask a question, or attach a code file above…'
+                        : mode === 'Debug code'
                         ? 'Paste the code, error message, and expected behavior, or attach a code file above…'
                         : mode === 'README writer'
                           ? 'Describe your project, its features, setup steps, and intended audience…'
@@ -493,7 +513,7 @@ function App() {
                     </>
                   ) : (
                     <>
-                      <Sparkles size={17} /> Generate response{' '}
+                      <ShieldCheck size={17} /> {mode === 'AI Code Review' ? 'Review code' : 'Generate response'}{' '}
                       <ArrowUpRight size={16} />
                     </>
                   )}
