@@ -151,7 +151,7 @@ function App() {
       if (event.source !== playgroundFrameRef.current?.contentWindow) return;
       const data = event.data as { __devhubPlayground?: boolean; text?: string } | null;
       if (data?.__devhubPlayground && typeof data.text === 'string') {
-        setPlaygroundOutput(current => current === 'Running…' ? data.text! : `${current}\\n${data.text}`);
+        setPlaygroundOutput(current => current === 'Running…' ? data.text! : `${current}\n${data.text}`);
       }
     }
     window.addEventListener('message', handlePlaygroundMessage);
