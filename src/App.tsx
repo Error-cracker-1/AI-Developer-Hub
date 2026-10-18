@@ -12,6 +12,7 @@ import {
   Github,
   LoaderCircle,
   Plus,
+  Paperclip,
   Sparkles,
   Trash2,
   WandSparkles,
@@ -108,6 +109,7 @@ function App() {
   const [mode, setMode] = useState<Mode>('Explain code');
   const [language, setLanguage] = useState('Python');
   const [task, setTask] = useState('');
+  const [attachedFile, setAttachedFile] = useState<{ name: string; text: string } | null>(null);
   const [result, setResult] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,8 +130,35 @@ function App() {
     [mode]
   );
 
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 100 * 1024) {
+      setErrorMessage('Please choose a text/code file smaller than 100 KB.');
+      return;
+    }
+    const allowedExtensions = ['.txt','.md','.json','.yaml','.yml','.xml','.html','.htm','.css','.scss','.less','.js','.jsx','.mjs','.cjs','.ts','.tsx','.py','.java','.kt','.kts','.c','.h','.cc','.cpp','.hpp','.cs','.go','.rs','.php','.rb','.swift','.sql','.sh','.bash','.ps1','.psm1','.toml','.ini','.vue','.svelte','.astro','.ipynb','.log'];
+    const lowerName = file.name.toLowerCase();
+    if (!allowedExtensions.some(extension => lowerName.endsWith(extension))) {
+      setErrorMessage('Unsupported file type. Choose a text or source-code file.');
+      return;
+    }
+    try {
+      const text = await file.text();
+      if (text.includes(String.fromCharCode(0))) {
+        setErrorMessage('This file does not look like plain text. Choose a text or source-code file.');
+        return;
+      }
+      setAttachedFile({ name: file.name, text });
+      setErrorMessage('');
+    } catch {
+      setErrorMessage('Could not read that file. Try another text or source-code file.');
+    }
+  }
+
   async function generate() {
-    if (!task.trim()) {
+    if (!task.trim() && !attachedFile) {
       setErrorMessage(
         'Add a question, code snippet, or project details first.'
       );
@@ -143,7 +172,7 @@ function App() {
       const response = await fetch('/api/assist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, language, task: task.trim() }),
+        body: JSON.stringify({ mode, language, task: task.trim(), fileName: attachedFile?.name, fileContent: attachedFile?.text }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         text?: string;
@@ -409,6 +438,19 @@ function App() {
                   </div>
                 </div>
               </div>
+              <div className="file-upload-row">
+                <label className="attach-file-button">
+                  <Paperclip size={16} /> {attachedFile ? "Replace file" : "Attach code file"}
+                  <input type="file" accept=".txt,.md,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.less,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.kt,.kts,.c,.h,.cc,.cpp,.hpp,.cs,.go,.rs,.php,.rb,.swift,.sql,.sh,.bash,.ps1,.psm1,.toml,.ini,.vue,.svelte,.astro,.ipynb,.log" onChange={handleFileChange} />
+                </label>
+                <span className="file-upload-hint">Text/code files up to 100 KB. File contents are sent to Gemini for this request.</span>
+                {attachedFile && (
+                  <span className="attached-file">
+                    <FileCode2 size={14} /> {attachedFile.name}
+                    <button type="button" onClick={() => setAttachedFile(null)} aria-label="Remove attached file"><X size={14} /></button>
+                  </span>
+                )}
+              </div>
               <label className="field-label prompt-label">
                 YOUR PROMPT <span>Be specific for the best results</span>
                 <textarea
@@ -416,9 +458,9 @@ function App() {
                   onChange={event => setTask(event.target.value)}
                   placeholder={
                     mode === 'Explain code'
-                      ? 'Paste your code here, or ask a question about a concept…'
+                      ? 'Paste your code here, ask a question, or attach a code file above…'
                       : mode === 'Debug code'
-                        ? 'Paste the code, error message, and what you expected to happen…'
+                        ? 'Paste the code, error message, and expected behavior, or attach a code file above…'
                         : mode === 'README writer'
                           ? 'Describe your project, its features, setup steps, and intended audience…'
                           : mode === 'Release notes'
