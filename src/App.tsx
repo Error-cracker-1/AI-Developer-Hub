@@ -19,6 +19,7 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 type Mode =
   | 'Generate code'
@@ -241,7 +242,9 @@ function App() {
   }
 
   return (
-    <div className="shell">
+    <>
+      <Analytics />
+      <div className="shell">
       <aside className="sidebar">
         <a className="brand" href="#" onClick={() => setTab('Workspace')}>
           <span className="brand-mark">
@@ -744,6 +747,7 @@ function App() {
         </footer>
       </main>
     </div>
+    </>
   );
 }
 
