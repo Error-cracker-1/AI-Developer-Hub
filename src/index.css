@@ -1,8 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
   font-family: 'DM Sans', sans-serif;
@@ -1239,3 +1240,5 @@ button:disabled {
     scroll-behavior: auto !important;
   }
 }
+
+.file-upload-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:4px 0 16px}.attach-file-button{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border:1px solid #34433a;border-radius:8px;color:#c3e9cf;background:#18231d;font:11px 'DM Sans',sans-serif;letter-spacing:0;cursor:pointer}.attach-file-button:hover{border-color:#6da981;background:#1c2b22}.attach-file-button input{display:none}.file-upload-hint{color:#778396;font:10px/1.5 'DM Sans',sans-serif;letter-spacing:0}.attached-file{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:7px 9px;border:1px solid #33483b;border-radius:7px;color:#bce8c8;background:#121d17;font:10px 'DM Sans',sans-serif;overflow-wrap:anywhere}.attached-file button{display:inline-grid;place-items:center;border:0;padding:2px;color:#9aa7a0;background:transparent}
