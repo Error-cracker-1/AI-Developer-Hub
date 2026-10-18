@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   ArrowUpRight,
@@ -14,6 +14,9 @@ import {
   LoaderCircle,
   Plus,
   Paperclip,
+  Play,
+  RotateCcw,
+  Terminal,
   Sparkles,
   Trash2,
   WandSparkles,
@@ -25,6 +28,7 @@ type Mode =
   | 'Explain code'
   | 'Debug code'
   | 'AI Code Review'
+  | 'Code Playground'
   | 'README writer'
   | 'Release notes';
 type Project = {
@@ -54,6 +58,11 @@ const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
     name: 'AI Code Review',
     description: 'Find bugs, risks, and maintainability issues',
     icon: ShieldCheck,
+  },
+  {
+    name: 'Code Playground',
+    description: 'Edit and run JavaScript or preview HTML safely',
+    icon: Terminal,
   },
   {
     name: 'README writer',
@@ -127,10 +136,27 @@ function App() {
   const [projectName, setProjectName] = useState('');
   const [projectLanguage, setProjectLanguage] = useState('Python');
   const [projectNotes, setProjectNotes] = useState('');
+  const [playgroundLanguage, setPlaygroundLanguage] = useState<'JavaScript' | 'HTML/CSS'>('JavaScript');
+  const [playgroundCode, setPlaygroundCode] = useState("console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));");
+  const [playgroundOutput, setPlaygroundOutput] = useState('Run your code to see console output here.');
+  const [playgroundDocument, setPlaygroundDocument] = useState('');
+  const playgroundFrameRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     localStorage.setItem('devhub-projects-v1', JSON.stringify(projects));
   }, [projects]);
+
+  useEffect(() => {
+    function handlePlaygroundMessage(event: MessageEvent) {
+      if (event.source !== playgroundFrameRef.current?.contentWindow) return;
+      const data = event.data as { __devhubPlayground?: boolean; text?: string } | null;
+      if (data?.__devhubPlayground && typeof data.text === 'string') {
+        setPlaygroundOutput(current => current === 'Running…' ? data.text! : `${current}\n${data.text}`);
+      }
+    }
+    window.addEventListener('message', handlePlaygroundMessage);
+    return () => window.removeEventListener('message', handlePlaygroundMessage);
+  }, []);
 
   const activeMode = useMemo(
     () => modes.find(item => item.name === mode) ?? modes[0],
@@ -162,6 +188,25 @@ function App() {
     } catch {
       setErrorMessage('Could not read that file. Try another text or source-code file.');
     }
+  }
+
+  function runPlayground() {
+    setPlaygroundOutput(playgroundLanguage === 'JavaScript' ? 'Running…' : 'HTML/CSS preview updated below.');
+    if (playgroundLanguage === 'HTML/CSS') {
+      setPlaygroundDocument(playgroundCode);
+      return;
+    }
+    const safeCode = JSON.stringify(playgroundCode).replace(/</g, '\\u003c');
+    setPlaygroundDocument(`<!doctype html><html><head><meta charset="utf-8"></head><body><script>(() => { const send = (...args) => parent.postMessage({__devhubPlayground:true,text:args.map(value => { try { return typeof value === 'string' ? value : JSON.stringify(value); } catch { return String(value); } }).join(' ')}, '*'); console.log = (...args) => send(...args); console.info = (...args) => send(...args); console.warn = (...args) => send('Warning:', ...args); console.error = (...args) => send('Error:', ...args); window.onerror = (message, source, line) => send('Error:', String(message) + (line ? ' (line ' + line + ')' : '')); const code = ${safeCode}; try { new Function(code)(); } catch (error) { send('Error:', error instanceof Error ? error.message : String(error)); } })();</script></body></html>`);
+  }
+
+  function sendPlaygroundTo(modeTarget: 'Debug code' | 'AI Code Review') {
+    setMode(modeTarget);
+    setLanguage(playgroundLanguage === 'JavaScript' ? 'JavaScript' : 'HTML');
+    setTask(playgroundCode);
+    setAttachedFile(null);
+    setResult('');
+    setErrorMessage('');
   }
 
   async function generate() {
@@ -324,7 +369,7 @@ function App() {
                   </div>
                   <i />
                   <div>
-                    <strong>6</strong>
+                    <strong>7</strong>
                     <span>AI workflows</span>
                   </div>
                   <i />
@@ -444,6 +489,39 @@ function App() {
                   <p>Attach a source file or paste code below. Findings will be prioritized by severity; the AI does not execute your code.</p>
                 </div>
               )}
+              {mode === 'Code Playground' && (
+                <section className="playground-panel" aria-label="Interactive code playground">
+                  <div className="playground-toolbar">
+                    <label className="playground-language">
+                      <span>EDITOR LANGUAGE</span>
+                      <select value={playgroundLanguage} onChange={event => {
+                        const next = event.target.value as 'JavaScript' | 'HTML/CSS';
+                        setPlaygroundLanguage(next);
+                        setPlaygroundDocument('');
+                        setPlaygroundOutput('Run your code to see the result here.');
+                        setPlaygroundCode(next === 'JavaScript' ? "console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));" : '<!doctype html>\n<html>\n<head>\n  <style>body { font-family: system-ui; padding: 2rem; } h1 { color: seagreen; }</style>\n</head>\n<body>\n  <h1>Hello, DevHub!</h1>\n  <p>Edit this HTML and CSS, then preview it.</p>\n</body>\n</html>');
+                      }}>
+                        <option>JavaScript</option>
+                        <option>HTML/CSS</option>
+                      </select>
+                    </label>
+                    <div className="playground-actions">
+                      <button type="button" className="secondary-button" onClick={() => { setPlaygroundCode(playgroundLanguage === 'JavaScript' ? "console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));" : '<!doctype html>\n<html>\n<head>\n  <style>body { font-family: system-ui; padding: 2rem; } h1 { color: seagreen; }</style>\n</head>\n<body>\n  <h1>Hello, DevHub!</h1>\n  <p>Edit this HTML and CSS, then preview it.</p>\n</body>\n</html>'); setPlaygroundOutput('Starter code restored. Press Run to execute it.'); setPlaygroundDocument(''); }}><RotateCcw size={14} /> Reset</button>
+                      <button type="button" className="generate-button" onClick={runPlayground}><Play size={15} /> Run {playgroundLanguage === 'JavaScript' ? 'code' : 'preview'}</button>
+                    </div>
+                  </div>
+                  <label className="playground-editor-label">SOURCE CODE <span>Runs in a sandboxed browser frame; it is not sent to the server to execute.</span></label>
+                  <textarea className="playground-editor" aria-label="Playground source code" spellCheck={false} autoCapitalize="off" autoCorrect="off" value={playgroundCode} onChange={event => setPlaygroundCode(event.target.value)} />
+                  <div className="playground-output-wrap">
+                    <div className="playground-output-heading"><Terminal size={15} /> {playgroundLanguage === 'JavaScript' ? 'CONSOLE OUTPUT' : 'LIVE PREVIEW'}</div>
+                    {playgroundLanguage === 'JavaScript' ? <><pre className="playground-output" aria-live="polite">{playgroundOutput}</pre><iframe className="playground-runner-frame" title="Isolated JavaScript runner" sandbox="allow-scripts" ref={playgroundFrameRef} srcDoc={playgroundDocument} /></> : <iframe className="playground-preview" title="Sandboxed HTML/CSS preview" sandbox="allow-scripts" ref={playgroundFrameRef} srcDoc={playgroundDocument || '<!doctype html><html><body style="font-family:system-ui;padding:1rem;color:#64748b">Press “Run preview” to render your HTML/CSS.</body></html>'} />}
+                  </div>
+                  <div className="playground-footer-note">Only JavaScript and HTML/CSS run in this browser playground. Python, C/C++, and other languages are not executed here. Avoid entering secrets or sensitive data into code that you do not trust.</div>
+                  <div className="playground-ai-actions"><button type="button" className="secondary-button" onClick={() => sendPlaygroundTo('Debug code')}>Ask AI to debug</button><button type="button" className="secondary-button" onClick={() => sendPlaygroundTo('AI Code Review')}>Review this code</button></div>
+                </section>
+              )}
+              {mode !== 'Code Playground' && (
+              <>
               <div className="form-grid">
                 <label className="field-label">
                   LANGUAGE / STACK
@@ -554,6 +632,8 @@ function App() {
                     using it in production.
                   </div>
                 </div>
+              )}
+              </>
               )}
             </section>
             <div className="bottom-note">
