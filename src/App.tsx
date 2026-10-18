@@ -9,6 +9,7 @@ import {
   Copy,
   FileCode2,
   FolderGit2,
+  ShieldCheck,
   Github,
   LoaderCircle,
   Plus,
@@ -23,6 +24,7 @@ type Mode =
   | 'Generate code'
   | 'Explain code'
   | 'Debug code'
+  | 'AI Code Review'
   | 'README writer'
   | 'Release notes';
 type Project = {
@@ -47,6 +49,11 @@ const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
     name: 'Debug code',
     description: 'Find likely causes and fixes',
     icon: Activity,
+  },
+  {
+    name: 'AI Code Review',
+    description: 'Find bugs, risks, and maintainability issues',
+    icon: ShieldCheck,
   },
   {
     name: 'README writer',
@@ -317,7 +324,7 @@ function App() {
                   </div>
                   <i />
                   <div>
-                    <strong>5</strong>
+                    <strong>6</strong>
                     <span>AI workflows</span>
                   </div>
                   <i />
