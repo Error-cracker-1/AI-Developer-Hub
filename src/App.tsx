@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Cube from 'cubejs';
 
 type Face = 'U' | 'R' | 'F' | 'D' | 'L' | 'B';
@@ -78,6 +78,12 @@ function App() {
   const [speed, setSpeed] = useState(900);
   const [scrambleText, setScrambleText] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [scanFace, setScanFace] = useState<Face>('F');
+  const [cameraError, setCameraError] = useState('');
+  const [viewAngle, setViewAngle] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const currentState = useMemo(() => {
     if (solutionStart && solution.length) {
@@ -134,6 +140,68 @@ function App() {
       next[face][index] = FACE_ORDER[nextIndex];
       return next;
     });
+  }
+
+  async function startCamera() {
+    setCameraError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera access is not supported here. Use a recent browser over HTTPS, or enter colors manually.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraOn(true);
+    } catch {
+      setCameraError('Camera permission was blocked or no camera was found. Allow camera access and try again, or enter colors manually.');
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    setCameraOn(false);
+  }
+
+  function captureScannedFace() {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      setCameraError('Wait for the camera preview to appear, then scan again.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setCameraError('Could not read the camera frame. Please try again.');
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const colors = FACE_ORDER.map(face => ({ face, rgb: hexToRgb(PALETTE[face].color) }));
+    const samples: Face[] = [];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const x = Math.round(canvas.width * (0.25 + col * 0.25));
+        const y = Math.round(canvas.height * (0.25 + row * 0.25));
+        const pixel = context.getImageData(Math.min(x, canvas.width - 1), Math.min(y, canvas.height - 1), 1, 1).data;
+        const rgb = [pixel[0], pixel[1], pixel[2]];
+        let nearest = colors[0];
+        let bestDistance = Number.POSITIVE_INFINITY;
+        colors.forEach(candidate => {
+          const distance = colorDistance(rgb, candidate.rgb);
+          if (distance < bestDistance) { bestDistance = distance; nearest = candidate; }
+        });
+        samples.push(nearest.face);
+      }
+    }
+    samples[4] = scanFace;
+    resetSolution();
+    setFaces(previous => ({ ...previous, [scanFace]: samples }));
+    setError('');
+    setStatus('Camera colors copied to the ' + FACE_NAMES[scanFace].toLowerCase() + ' face. Review every sticker before solving.');
+    setCameraError('Face captured. Lighting can affect color recognition, so check the nine stickers before solving.');
   }
 
   function scrambleCube() {
@@ -350,6 +418,30 @@ function App() {
               </span>
               <span className="tap-hint">Tap a sticker to change color</span>
             </div>
+            <section className="scan-panel" aria-label="Camera cube scanner">
+              <div className="scan-panel-heading">
+                <div><strong>📷 Scan a face with your camera</strong><p>Hold one face flat and centered in the preview. This is a color-assist tool; review the result.</p></div>
+                {!cameraOn ? <button className="button-secondary scan-start" onClick={startCamera}>Open camera</button> : <button className="text-button" onClick={stopCamera}>Turn camera off</button>}
+              </div>
+              {cameraOn && <>
+                <label className="scan-face-label" htmlFor="scan-face">Face you are scanning</label>
+                <select id="scan-face" className="scan-face-select" value={scanFace} onChange={event => setScanFace(event.target.value as Face)}>
+                  {FACE_ORDER.map(face => <option key={face} value={face}>{FACE_NAMES[face]} ({face})</option>)}
+                </select>
+                <div className="camera-preview"><video ref={videoRef} autoPlay playsInline muted /><div className="camera-grid" aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</div></div>
+                <button className="button-primary scan-capture" onClick={captureScannedFace}>Capture 9 sticker colors</button>
+              </>}
+              {cameraError && <p className="scan-message" role="status">{cameraError}</p>}
+            </section>
+            <div className="cube-3d-panel">
+              <div><strong>3D cube preview</strong><p>Rotate the view to compare the visible faces with your real cube.</p></div>
+              <div className="cube-3d-stage"><div className="mini-cube cube-3d-object" style={{ transform: 'rotate(-26deg) rotateY(' + viewAngle + 'deg)' }} aria-label="Rotatable 3D-style cube preview">
+                <div className="mini-face mini-top">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ background: PALETTE[displayedFaces.U[i] as Face].color }} />)}</div>
+                <div className="mini-face mini-left">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ background: PALETTE[displayedFaces.F[i] as Face].color }} />)}</div>
+                <div className="mini-face mini-right">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ background: PALETTE[displayedFaces.R[i] as Face].color }} />)}</div>
+              </div></div>
+              <div className="cube-3d-controls"><button className="control-button" onClick={() => setViewAngle(angle => angle - 25)} aria-label="Rotate cube view left">↶</button><span>{viewAngle % 360}°</span><button className="control-button" onClick={() => setViewAngle(angle => angle + 25)} aria-label="Rotate cube view right">↷</button></div>
+            </div>
             <div
               className="cube-net"
               aria-label="Editable Rubik's cube sticker net"
@@ -432,8 +524,7 @@ function App() {
               </div>
             )}
             <p className="privacy-note">
-              <span>◈</span> Your cube state stays in this browser. No camera or
-              account needed.
+              <span>◈</span> Camera scanning runs in this browser. Images are not uploaded; check detected colors before solving.
             </p>
           </section>
 
@@ -767,6 +858,15 @@ function moveDescription(move: string) {
     : move.includes("'")
       ? 'Turn the ' + move[0] + ' face counter-clockwise.'
       : 'Turn the ' + move[0] + ' face clockwise.';
+}
+
+function hexToRgb(hex: string): number[] {
+  const value = hex.replace('#', '');
+  return [parseInt(value.slice(0, 2), 16), parseInt(value.slice(2, 4), 16), parseInt(value.slice(4, 6), 16)];
+}
+
+function colorDistance(a: number[], b: number[]): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
 }
 
 export default App;
