@@ -1,51 +1,46 @@
-# AI Developer Hub
+# TwistLab — Rubik's Cube Solver
 
-A React + Vite workspace for common software-development tasks, with a Gemini-powered serverless API.
+A responsive browser-based 3×3 Rubik's Cube solver inspired by the visual reference shared by the project owner.
 
 ## Features
 
-- **Generate code** across programming languages and stacks.
-- **Explain code** and technical concepts.
-- **Debug code** with likely causes and suggested fixes.
-- **README writer** for GitHub project documentation.
-- **Release notes** with structured Markdown and emoji headings.
-- **Project organizer** with projects saved in the current browser.
-
-## Deploy from GitHub
-
-1. Open [Vercel](https://vercel.com/) and sign in.
-2. Choose **Add New → Project**, then import `Error-cracker-1/AI-Developer-Hub`.
-3. Keep the detected Vite framework and default build settings (`npm run build`, output directory `dist`).
-4. In the Vercel project, open **Settings → Environment Variables**.
-5. Add `GEMINI_API_KEY` with your Gemini API key. Keep it server-side: **do not** name it `VITE_GEMINI_API_KEY` and do not commit it to GitHub.
-6. Deploy. Future pushes to the connected production branch will trigger deployments automatically.
-
-The app uses the stable, cost-conscious `gemini-3.5-flash-lite` model. Model availability and usage limits depend on the Google AI project and its quota.
+- Editable 3×3 sticker net with six labeled faces and color-count validation.
+- Random 20-move scrambles.
+- Two-phase cube solver powered by `cubejs`.
+- Move-by-move solution guide with progress, previous/next navigation, autoplay, speed controls, and copyable notation.
+- Responsive desktop and mobile layouts.
+- Solves locally in the browser; no account or API key is required.
 
 ## Run locally
 
-Requires a current Node.js LTS release.
+Requirements: Node.js 20+ and npm.
 
 ```bash
 npm install
 npm run dev
 ```
 
-To test the serverless API locally, install the Vercel CLI and run:
+Create a production build:
 
 ```bash
-npm run vercel:dev
+npm run build
+npm run preview
 ```
 
-Set `GEMINI_API_KEY` in a local `.env.local` file for local API testing. Do not commit that file. The included `.gitignore` excludes environment files.
+## Cube notation
 
-## Security notes
+- `R`, `U`, `F`, `D`, `L`, `B`: turn the named face clockwise.
+- An apostrophe, such as `R'`, means counter-clockwise.
+- `2`, such as `R2`, means a half-turn.
 
-- The Gemini key is read only by the serverless function; it is never embedded in frontend JavaScript.
-- Requests are validated and prompt size is limited.
-- Review generated code and test it before using it in production.
-- Configure usage limits and monitor API usage in your Google AI project to reduce unexpected consumption.
+## Entering a cube
+
+The six center stickers are fixed and identify the faces. Tap a non-center sticker to cycle through colors. Each color must appear exactly nine times. If a manually entered cube configuration is physically impossible, the solver will show an error instead of a solution.
 
 ## Tech stack
 
-React, TypeScript, Vite, Tailwind CSS, Lucide icons, Vercel Functions, and the Gemini API.
+React, TypeScript, Vite, Tailwind CSS, and cubejs.
+
+## Tests
+
+The AppDeploy QA workflow definitions are in `tests/tests.json`. Verify a solved cube, generate and solve a scramble, navigate the solution, and confirm invalid sticker counts are rejected.
