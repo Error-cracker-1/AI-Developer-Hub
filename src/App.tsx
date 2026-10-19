@@ -1,834 +1,772 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Activity,
-  ArrowUpRight,
-  BookOpen,
-  Check,
-  ChevronDown,
-  Code2,
-  Copy,
-  FileCode2,
-  FolderGit2,
-  ShieldCheck,
-  Github,
-  LoaderCircle,
-  Plus,
-  Paperclip,
-  Play,
-  RotateCcw,
-  Terminal,
-  Sparkles,
-  Trash2,
-  WandSparkles,
-  X,
-} from 'lucide-react';
-import { Analytics } from '@vercel/analytics/react';
+import { useEffect, useMemo, useState } from 'react';
+import Cube from 'cubejs';
 
-type Mode =
-  | 'Generate code'
-  | 'Explain code'
-  | 'Debug code'
-  | 'AI Code Review'
-  | 'Code Playground'
-  | 'README writer'
-  | 'Release notes';
-type Project = {
-  id: string;
-  name: string;
-  language: string;
-  status: string;
-  notes: string;
+type Face = 'U' | 'R' | 'F' | 'D' | 'L' | 'B';
+type Facelets = Record<Face, string[]>;
+
+const FACE_ORDER: Face[] = ['U', 'R', 'F', 'D', 'L', 'B'];
+const FACE_NAMES: Record<Face, string> = {
+  U: 'Up',
+  R: 'Right',
+  F: 'Front',
+  D: 'Down',
+  L: 'Left',
+  B: 'Back',
 };
-const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
-  {
-    name: 'Generate code',
-    description: 'Build a solution from a clear prompt',
-    icon: WandSparkles,
-  },
-  {
-    name: 'Explain code',
-    description: 'Understand unfamiliar code',
-    icon: BookOpen,
-  },
-  {
-    name: 'Debug code',
-    description: 'Find likely causes and fixes',
-    icon: Activity,
-  },
-  {
-    name: 'AI Code Review',
-    description: 'Find bugs, risks, and maintainability issues',
-    icon: ShieldCheck,
-  },
-  {
-    name: 'Code Playground',
-    description: 'Edit and run JavaScript or preview HTML safely',
-    icon: Terminal,
-  },
-  {
-    name: 'README writer',
-    description: 'Draft polished project documentation',
-    icon: FileCode2,
-  },
-  {
-    name: 'Release notes',
-    description: 'Write structured Markdown release notes',
-    icon: Github,
-  },
+const PALETTE: Record<Face, { color: string; name: string }> = {
+  U: { color: '#f8fafc', name: 'White' },
+  R: { color: '#ef4444', name: 'Red' },
+  F: { color: '#22a06b', name: 'Green' },
+  D: { color: '#facc15', name: 'Yellow' },
+  L: { color: '#f97316', name: 'Orange' },
+  B: { color: '#3b82f6', name: 'Blue' },
+};
+const MOVES = [
+  'U',
+  "U'",
+  'U2',
+  'R',
+  "R'",
+  'R2',
+  'F',
+  "F'",
+  'F2',
+  'D',
+  "D'",
+  'D2',
+  'L',
+  "L'",
+  'L2',
+  'B',
+  "B'",
+  'B2',
 ];
-const languages = [
-  'Python',
-  'JavaScript',
-  'TypeScript',
-  'HTML',
-  'CSS',
-  'Java',
-  'C',
-  'C++',
-  'C#',
-  'Go',
-  'Rust',
-  'PHP',
-  'Ruby',
-  'Kotlin',
-  'Swift',
-  'SQL',
-  'Bash / PowerShell',
-  'Other',
-];
-const starterProjects: Project[] = [
-  {
-    id: 'starter-chatbot',
-    name: 'AI Chatbot',
-    language: 'Python',
-    status: 'In progress',
-    notes: 'Improve prompts, reliability and release workflow.',
-  },
-  {
-    id: 'starter-web',
-    name: 'Web experiments',
-    language: 'HTML / CSS / JS',
-    status: 'Planned',
-    notes: 'Keep small interface ideas and experiments together.',
-  },
-];
-
-function readProjects(): Project[] {
-  try {
-    const saved = localStorage.getItem('devhub-projects-v1');
-    return saved ? (JSON.parse(saved) as Project[]) : starterProjects;
-  } catch {
-    return starterProjects;
-  }
-}
+const EMPTY_FACELETS = (): Facelets => ({
+  U: Array(9).fill('U'),
+  R: Array(9).fill('R'),
+  F: Array(9).fill('F'),
+  D: Array(9).fill('D'),
+  L: Array(9).fill('L'),
+  B: Array(9).fill('B'),
+});
+const asFacelets = (state: string): Facelets => {
+  const result = {} as Facelets;
+  FACE_ORDER.forEach((face, index) => {
+    result[face] = state.slice(index * 9, index * 9 + 9).split('');
+  });
+  return result;
+};
+const faceletsToString = (faces: Facelets) =>
+  FACE_ORDER.map(face => faces[face].join('')).join('');
+const moveState = (state: string, moves: string[]) => {
+  if (!moves.length) return state;
+  const cube = Cube.fromString(state);
+  cube.move(moves.join(' '));
+  return cube.asString();
+};
 
 function App() {
-  const [mode, setMode] = useState<Mode>('Explain code');
-  const [language, setLanguage] = useState('Python');
-  const [task, setTask] = useState('');
-  const [attachedFile, setAttachedFile] = useState<{ name: string; text: string } | null>(null);
-  const [result, setResult] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [tab, setTab] = useState<'Workspace' | 'Projects'>('Workspace');
-  const [projects, setProjects] = useState<Project[]>(readProjects);
-  const [showProjectForm, setShowProjectForm] = useState(false);
-  const [projectName, setProjectName] = useState('');
-  const [projectLanguage, setProjectLanguage] = useState('Python');
-  const [projectNotes, setProjectNotes] = useState('');
-  const [playgroundLanguage, setPlaygroundLanguage] = useState<'JavaScript' | 'HTML/CSS'>('JavaScript');
-  const [playgroundCode, setPlaygroundCode] = useState("console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));");
-  const [playgroundOutput, setPlaygroundOutput] = useState('Run your code to see console output here.');
-  const [playgroundDocument, setPlaygroundDocument] = useState('');
-  const playgroundFrameRef = useRef<HTMLIFrameElement>(null);
+  const [faces, setFaces] = useState<Facelets>(EMPTY_FACELETS);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('Ready when you are.');
+  const [solverReady, setSolverReady] = useState(false);
+  const [isSolving, setIsSolving] = useState(false);
+  const [solution, setSolution] = useState<string[]>([]);
+  const [solutionStart, setSolutionStart] = useState('');
+  const [step, setStep] = useState(0);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [speed, setSpeed] = useState(900);
+  const [scrambleText, setScrambleText] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem('devhub-projects-v1', JSON.stringify(projects));
-  }, [projects]);
-
-  useEffect(() => {
-    function handlePlaygroundMessage(event: MessageEvent) {
-      if (event.source !== playgroundFrameRef.current?.contentWindow) return;
-      const data = event.data as { __devhubPlayground?: boolean; text?: string } | null;
-      if (data?.__devhubPlayground && typeof data.text === 'string') {
-        setPlaygroundOutput(current => current === 'Running…' ? data.text! : `${current}\n${data.text}`);
+  const currentState = useMemo(() => {
+    if (solutionStart && solution.length) {
+      try {
+        return moveState(solutionStart, solution.slice(0, step));
+      } catch {
+        return faceletsToString(faces);
       }
     }
-    window.addEventListener('message', handlePlaygroundMessage);
-    return () => window.removeEventListener('message', handlePlaygroundMessage);
-  }, []);
+    return faceletsToString(faces);
+  }, [solutionStart, solution, step, faces]);
 
-  const activeMode = useMemo(
-    () => modes.find(item => item.name === mode) ?? modes[0],
-    [mode]
+  const displayedFaces = useMemo(
+    () => asFacelets(currentState),
+    [currentState]
   );
+  const isSolved =
+    currentState ===
+    'U'.repeat(9) +
+      'R'.repeat(9) +
+      'F'.repeat(9) +
+      'D'.repeat(9) +
+      'L'.repeat(9) +
+      'B'.repeat(9);
 
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (file.size > 100 * 1024) {
-      setErrorMessage('Please choose a text/code file smaller than 100 KB.');
+  useEffect(() => {
+    if (!autoPlay || step >= solution.length) {
+      if (autoPlay) setAutoPlay(false);
       return;
     }
-    const allowedExtensions = ['.txt','.md','.json','.yaml','.yml','.xml','.html','.htm','.css','.scss','.less','.js','.jsx','.mjs','.cjs','.ts','.tsx','.py','.java','.kt','.kts','.c','.h','.cc','.cpp','.hpp','.cs','.go','.rs','.php','.rb','.swift','.sql','.sh','.bash','.ps1','.psm1','.toml','.ini','.vue','.svelte','.astro','.ipynb','.log'];
-    const lowerName = file.name.toLowerCase();
-    if (!allowedExtensions.some(extension => lowerName.endsWith(extension))) {
-      setErrorMessage('Unsupported file type. Choose a text or source-code file.');
+    const timer = window.setTimeout(
+      () => setStep(current => Math.min(current + 1, solution.length)),
+      speed
+    );
+    return () => window.clearTimeout(timer);
+  }, [autoPlay, step, solution.length, speed]);
+
+  function resetSolution() {
+    setAutoPlay(false);
+    setSolution([]);
+    setSolutionStart('');
+    setStep(0);
+  }
+
+  function cycleSticker(face: Face, index: number) {
+    if (index === 4 || isSolving) return;
+    resetSolution();
+    setError('');
+    setStatus('Cube updated. Check that every color appears nine times.');
+    setFaces(previous => {
+      const next = { ...previous, [face]: [...previous[face]] };
+      const current = next[face][index] as Face;
+      const nextIndex = (FACE_ORDER.indexOf(current) + 1) % FACE_ORDER.length;
+      next[face][index] = FACE_ORDER[nextIndex];
+      return next;
+    });
+  }
+
+  function scrambleCube() {
+    const cube = new Cube();
+    const scramble: string[] = [];
+    let previousFace = '';
+    for (let i = 0; i < 20; i++) {
+      const options = MOVES.filter(move => move[0] !== previousFace);
+      const move = options[Math.floor(Math.random() * options.length)];
+      scramble.push(move);
+      previousFace = move[0];
+    }
+    cube.move(scramble.join(' '));
+    const next = cube.asString();
+    setFaces(asFacelets(next));
+    setScrambleText(scramble.join(' '));
+    resetSolution();
+    setError('');
+    setStatus('Random scramble ready. Press Solve cube to get the steps.');
+  }
+
+  function resetCube() {
+    setFaces(EMPTY_FACELETS());
+    setScrambleText('');
+    resetSolution();
+    setError('');
+    setStatus('Cube reset to solved state.');
+  }
+
+  async function solveCube() {
+    setAutoPlay(false);
+    setError('');
+    const state = faceletsToString(faces);
+    const counts = FACE_ORDER.map(face => ({
+      face,
+      count: state.split(face).length - 1,
+    }));
+    const incorrect = counts.filter(item => item.count !== 9);
+    if (incorrect.length) {
+      setError(
+        'Invalid color counts: each color must appear exactly 9 times. ' +
+          incorrect.map(item => item.face + ': ' + item.count).join(', ')
+      );
+      setStatus('Fix the sticker colors before solving.');
       return;
     }
-    try {
-      const text = await file.text();
-      if (text.includes(String.fromCharCode(0))) {
-        setErrorMessage('This file does not look like plain text. Choose a text or source-code file.');
-        return;
-      }
-      setAttachedFile({ name: file.name, text });
-      setErrorMessage('');
-    } catch {
-      setErrorMessage('Could not read that file. Try another text or source-code file.');
-    }
-  }
-
-  function runPlayground() {
-    setPlaygroundOutput(playgroundLanguage === 'JavaScript' ? 'Running…' : 'HTML/CSS preview updated below.');
-    if (playgroundLanguage === 'HTML/CSS') {
-      setPlaygroundDocument(playgroundCode);
-      return;
-    }
-    const safeCode = JSON.stringify(playgroundCode).replace(/</g, '\\u003c');
-    setPlaygroundDocument(`<!doctype html><html><head><meta charset="utf-8"></head><body><script>(() => { const send = (...args) => parent.postMessage({__devhubPlayground:true,text:args.map(value => { try { return typeof value === 'string' ? value : JSON.stringify(value); } catch { return String(value); } }).join(' ')}, '*'); console.log = (...args) => send(...args); console.info = (...args) => send(...args); console.warn = (...args) => send('Warning:', ...args); console.error = (...args) => send('Error:', ...args); window.onerror = (message, source, line) => send('Error:', String(message) + (line ? ' (line ' + line + ')' : '')); const code = ${safeCode}; try { new Function(code)(); } catch (error) { send('Error:', error instanceof Error ? error.message : String(error)); } })();</script></body></html>`);
-  }
-
-  function sendPlaygroundTo(modeTarget: 'Debug code' | 'AI Code Review') {
-    setMode(modeTarget);
-    setLanguage(playgroundLanguage === 'JavaScript' ? 'JavaScript' : 'HTML');
-    setTask(playgroundCode);
-    setAttachedFile(null);
-    setResult('');
-    setErrorMessage('');
-  }
-
-  async function generate() {
-    if (!task.trim() && !attachedFile) {
-      setErrorMessage(
-        'Add a question, code snippet, or project details first.'
+    if (FACE_ORDER.some(face => faces[face][4] !== face)) {
+      setError(
+        'The six center stickers must stay on their matching faces. Reset the cube and enter the stickers relative to the face labels.'
       );
       return;
     }
-    setLoading(true);
-    setErrorMessage('');
-    setCopied(false);
-    setResult('');
+    setIsSolving(true);
+    setStatus(
+      solverReady
+        ? 'Calculating a solution…'
+        : 'Preparing the solver tables (first run may take a few seconds)…'
+    );
     try {
-      const response = await fetch('/api/assist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, language, task: task.trim(), fileName: attachedFile?.name, fileContent: attachedFile?.text }),
+      await new Promise<void>((resolve, reject) => {
+        window.setTimeout(() => {
+          try {
+            if (!solverReady) Cube.initSolver();
+            resolve();
+          } catch (cause) {
+            reject(cause);
+          }
+        }, 20);
       });
-      const payload = (await response.json().catch(() => ({}))) as {
-        text?: string;
-        error?: string;
-      };
-      if (!response.ok) {
-        throw new Error(payload.error || `AI request failed (HTTP ${response.status}).`);
-      }
-      const text = payload.text;
-      if (typeof text !== 'string' || !text.trim())
+      setSolverReady(true);
+      const cube = Cube.fromString(state);
+      const answer = cube.solve().trim();
+      const moves = answer ? answer.split(/\s+/) : [];
+      const verification = Cube.fromString(state);
+      if (moves.length) verification.move(moves.join(' '));
+      if (
+        !verification
+          .asString()
+          .split('')
+          .every((value, index) => value === 'URFDLB'[Math.floor(index / 9)])
+      ) {
         throw new Error(
-          'The assistant returned an empty response. Please try again.'
+          'The solver returned a sequence that did not verify. Please check the sticker input.'
         );
-      setResult(text);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong. Please try again.';
-      setErrorMessage(
-        message.includes('429')
-          ? 'The AI service is busy or rate-limited. Wait a moment, then retry.'
-          : message
+      }
+      setSolutionStart(state);
+      setSolution(moves);
+      setStep(0);
+      setStatus(
+        moves.length
+          ? 'Solution found. Follow each move in order.'
+          : 'This cube is already solved.'
       );
+      setScrambleText('');
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Could not solve this cube state. Check the sticker colors and try again.'
+      );
+      setStatus('The cube state could not be solved.');
     } finally {
-      setLoading(false);
+      setIsSolving(false);
     }
   }
 
-  async function copyResult() {
-    if (!result) return;
-    try {
-      await navigator.clipboard.writeText(result);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setErrorMessage(
-        'Copy was blocked by your browser. Select the result text and copy it manually.'
-      );
-    }
+  function useMoveIndex(nextStep: number) {
+    setAutoPlay(false);
+    setStep(Math.max(0, Math.min(solution.length, nextStep)));
   }
 
-  function addProject(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!projectName.trim()) return;
-    setProjects(current => [
-      {
-        id: crypto.randomUUID(),
-        name: projectName.trim(),
-        language: projectLanguage,
-        status: 'Planned',
-        notes: projectNotes.trim(),
-      },
-      ...current,
-    ]);
-    setProjectName('');
-    setProjectNotes('');
-    setShowProjectForm(false);
-  }
+  const currentMove = step < solution.length ? solution[step] : '';
+  const progress = solution.length
+    ? Math.round((step / solution.length) * 100)
+    : 0;
 
   return (
-    <>
-      <Analytics />
-      <div className="shell">
-      <aside className="sidebar">
-        <a className="brand" href="#" onClick={() => setTab('Workspace')}>
+    <div className="site-shell">
+      <header className="topbar">
+        <a className="brand" href="#" aria-label="TwistLab home">
           <span className="brand-mark">
-            <Code2 size={21} />
+            <span />
+            <span />
+            <span />
+            <span />
           </span>
           <span>
-            <strong>
-              Dev<span>Hub</span>
-            </strong>
-            <small>AI WORKSPACE</small>
+            TWIST<span className="brand-accent">LAB</span>
           </span>
         </a>
-        <div className="side-label">WORKSPACE</div>
-        <button
-          className={tab === 'Workspace' ? 'nav-item active' : 'nav-item'}
-          onClick={() => setTab('Workspace')}
-        >
-          <Sparkles size={17} /> AI Assistant <span className="nav-dot" />
-        </button>
-        <button
-          className={tab === 'Projects' ? 'nav-item active' : 'nav-item'}
-          onClick={() => setTab('Projects')}
-        >
-          <FolderGit2 size={17} /> My Projects{' '}
-          <span className="nav-count">{projects.length}</span>
-        </button>
-        <div className="sidebar-bottom">
-          <div className="status-card">
-            <span className="status-icon">
-              <Activity size={16} />
-            </span>
-            <div>
-              <strong>Ready to build?</strong>
-              <p>Your next idea starts here.</p>
-            </div>
-          </div>
-          <div className="profile-row">
-            <div className="avatar">D</div>
-            <div>
-              <strong>Developer</strong>
-              <small>Personal workspace</small>
-            </div>
-            <ChevronDown size={15} />
-          </div>
+        <div className="topbar-right">
+          <span className="local-badge">
+            <span className="status-dot" /> Runs in your browser
+          </span>
+          <button
+            className="help-link"
+            onClick={() => setShowHelp(value => !value)}
+          >
+            How to use
+          </button>
         </div>
-      </aside>
+      </header>
 
-      <main className="main">
-        <header className="topbar">
-          <div className="breadcrumbs">
-            Workspace <span>/</span> <strong>{tab}</strong>
+      <main className="main-content">
+        <section className="hero">
+          <div className="eyebrow">
+            <span className="eyebrow-line" /> THE CUBE, DECODED
           </div>
-          <div className="top-actions">
-            <span className="secure-pill">
-              <span /> Private workspace
-            </span>
-            <div className="top-avatar">D</div>
+          <h1>
+            One cube.
+            <br />
+            <span>One clear solution.</span>
+          </h1>
+          <p className="hero-copy">
+            Enter your 3×3 cube, get a move-by-move solution, and follow along
+            at your own pace.
+          </p>
+          <div className="hero-tags">
+            <span>3×3 SOLVER</span>
+            <span className="tag-separator">/</span>
+            <span>STEP-BY-STEP</span>
+            <span className="tag-separator">/</span>
+            <span>FREE TO USE</span>
           </div>
-        </header>
-        {tab === 'Workspace' ? (
-          <div className="content">
-            <div className="hero">
-              <div className="hero-copy">
-                <div className="eyebrow">
-                  <Sparkles size={14} /> YOUR AI DEVELOPMENT PARTNER
-                </div>
-                <h1>
-                  Make good code.
-                  <br />
-                  <span>Ship great ideas.</span>
-                </h1>
-                <p>
-                  Write, understand, and improve code across languages. One
-                  focused workspace for your entire build process.
-                </p>
-                <div className="hero-stats">
-                  <div>
-                    <strong>18+</strong>
-                    <span>Languages</span>
-                  </div>
-                  <i />
-                  <div>
-                    <strong>7</strong>
-                    <span>AI workflows</span>
-                  </div>
-                  <i />
-                  <div>
-                    <strong>1</strong>
-                    <span>Creative space</span>
-                  </div>
-                </div>
-              </div>
-              <div className="hero-art" aria-hidden="true">
-                <div className="orbit orbit-one" />
-                <div className="orbit orbit-two" />
-                <div className="code-window">
-                  <div className="window-head">
-                    <span />
-                    <span />
-                    <span />
-                    <small>solution.ts</small>
-                  </div>
-                  <div className="code-lines">
-                    <p>
-                      <b>01</b> <em>const</em> idea = <i>'build';</i>
-                    </p>
-                    <p>
-                      <b>02</b> <em>function</em> <strong>create</strong>(){' '}
-                      {'{'}
-                    </p>
-                    <p>
-                      <b>03</b> &nbsp; <em>return</em> idea +{' '}
-                      <i>' something';</i>
-                    </p>
-                    <p>
-                      <b>04</b> {'}'}
-                    </p>
-                    <p>
-                      <b>05</b>{' '}
-                      <span className="code-comment">
-                        // iterate. improve. ship.
-                      </span>
-                    </p>
-                  </div>
-                </div>
-                <div className="floating-chip chip-top">
-                  <Sparkles size={15} /> AI assisted
-                </div>
-                <div className="floating-chip chip-bottom">
-                  <Check size={15} /> Build with confidence
-                </div>
-              </div>
-            </div>
-            <div className="section-heading">
+        </section>
+
+        {showHelp && (
+          <section className="help-panel">
+            <button
+              className="help-close"
+              onClick={() => setShowHelp(false)}
+              aria-label="Close help"
+            >
+              ×
+            </button>
+            <h3>How to enter your cube</h3>
+            <ol>
+              <li>Hold the cube with white on top and green facing you.</li>
+              <li>
+                Use the net below. Tap any non-center sticker to cycle its
+                color.
+              </li>
+              <li>Each color must appear exactly nine times.</li>
+              <li>
+                Press <strong>Solve cube</strong>, then use the step controls to
+                follow the algorithm.
+              </li>
+            </ol>
+            <p>
+              Move notation: <strong>R</strong> = right face clockwise,{' '}
+              <strong>R'</strong> = counter-clockwise, and <strong>R2</strong> =
+              half turn. The same notation applies to U, F, D, L, and B.
+            </p>
+          </section>
+        )}
+
+        <div className="workspace">
+          <section className="cube-card">
+            <div className="card-heading">
               <div>
-                <h2>What are we building today?</h2>
-                <p>Choose a workflow and let’s get to work.</p>
+                <span className="section-kicker">01 / YOUR CUBE</span>
+                <h2>Cube configuration</h2>
               </div>
-              <span className="powered">
-                <span /> AI READY
+              <button className="text-button" onClick={resetCube}>
+                Reset cube ↺
+              </button>
+            </div>
+            <div className="cube-status-row">
+              <span
+                className={'cube-status-pill ' + (isSolved ? 'solved' : '')}
+              >
+                <span className="mini-dot" />
+                {isSolved ? 'Solved state' : 'Custom state'}
+              </span>
+              <span className="tap-hint">Tap a sticker to change color</span>
+            </div>
+            <div
+              className="cube-net"
+              aria-label="Editable Rubik's cube sticker net"
+            >
+              <div className="net-spacer" />
+              <FaceGrid
+                face="U"
+                stickers={displayedFaces.U}
+                onSticker={cycleSticker}
+                disabled={Boolean(solution.length) || isSolving}
+              />
+              <div className="net-spacer" />
+              <div className="net-spacer" />
+              <FaceGrid
+                face="L"
+                stickers={displayedFaces.L}
+                onSticker={cycleSticker}
+                disabled={Boolean(solution.length) || isSolving}
+              />
+              <FaceGrid
+                face="F"
+                stickers={displayedFaces.F}
+                onSticker={cycleSticker}
+                disabled={Boolean(solution.length) || isSolving}
+              />
+              <FaceGrid
+                face="R"
+                stickers={displayedFaces.R}
+                onSticker={cycleSticker}
+                disabled={Boolean(solution.length) || isSolving}
+              />
+              <FaceGrid
+                face="B"
+                stickers={displayedFaces.B}
+                onSticker={cycleSticker}
+                disabled={Boolean(solution.length) || isSolving}
+              />
+              <div className="net-spacer" />
+              <FaceGrid
+                face="D"
+                stickers={displayedFaces.D}
+                onSticker={cycleSticker}
+                disabled={Boolean(solution.length) || isSolving}
+              />
+              <div className="net-spacer" />
+              <div className="net-spacer" />
+            </div>
+            <div className="palette-legend">
+              {FACE_ORDER.map(face => (
+                <span key={face}>
+                  <i style={{ background: PALETTE[face].color }} />
+                  {PALETTE[face].name}
+                </span>
+              ))}
+            </div>
+            <div className="cube-actions">
+              <button className="button-secondary" onClick={scrambleCube}>
+                ⤨ Random scramble
+              </button>
+              <button
+                className="button-primary"
+                onClick={solveCube}
+                disabled={isSolving}
+              >
+                {isSolving ? (
+                  <>
+                    <span className="spinner" /> Solving…
+                  </>
+                ) : (
+                  <>
+                    Solve cube <span>↗</span>
+                  </>
+                )}
+              </button>
+            </div>
+            {scrambleText && (
+              <div className="scramble-note">
+                <span>SCRAMBLE</span>
+                <code>{scrambleText}</code>
+              </div>
+            )}
+            <p className="privacy-note">
+              <span>◈</span> Your cube state stays in this browser. No camera or
+              account needed.
+            </p>
+          </section>
+
+          <section className="solution-card">
+            <div className="card-heading">
+              <div>
+                <span className="section-kicker">02 / THE SOLUTION</span>
+                <h2>Move guide</h2>
+              </div>
+              <span className="move-count">
+                {solution.length ? solution.length + ' MOVES' : 'WAITING'}
               </span>
             </div>
-            <div className="mode-grid">
-              {modes.map((item, index) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.name}
-                    className={
-                      mode === item.name ? 'mode-card selected' : 'mode-card'
-                    }
-                    onClick={() => setMode(item.name)}
-                  >
-                    <span className={'mode-icon mode-' + index}>
-                      <Icon size={19} />
-                    </span>
-                    <span className="mode-text">
-                      <strong>{item.name}</strong>
-                      <small>{item.description}</small>
-                    </span>
-                    {mode === item.name ? (
-                      <span className="selected-check">
-                        <Check size={13} />
-                      </span>
-                    ) : (
-                      <ArrowUpRight className="mode-arrow" size={16} />
-                    )}
-                  </button>
-                );
-              })}
+            <div className="solution-visual">
+              <div className="visual-glow" />
+              <div className="mini-cube" aria-label="Cube status illustration">
+                <div className="mini-face mini-top">
+                  {Array.from({ length: 9 }, (_, i) => (
+                    <i
+                      key={i}
+                      style={{
+                        background: PALETTE[displayedFaces.U[i] as Face].color,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="mini-face mini-left">
+                  {Array.from({ length: 9 }, (_, i) => (
+                    <i
+                      key={i}
+                      style={{
+                        background: PALETTE[displayedFaces.F[i] as Face].color,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="mini-face mini-right">
+                  {Array.from({ length: 9 }, (_, i) => (
+                    <i
+                      key={i}
+                      style={{
+                        background: PALETTE[displayedFaces.R[i] as Face].color,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="visual-caption">
+                {solution.length
+                  ? step === solution.length
+                    ? 'CUBE SOLVED'
+                    : 'FOLLOW THE NEXT MOVE'
+                  : 'YOUR SOLUTION WILL APPEAR HERE'}
+              </div>
             </div>
-            <section className="workbench">
-              <div className="workbench-title">
-                <div className="workbench-icon">
-                  <activeMode.icon size={19} />
-                </div>
-                <div>
-                  <h2>{mode}</h2>
-                  <p>{activeMode.description}</p>
-                </div>
-                <span className="live-tag">
-                  <span /> READY
-                </span>
+            <div className="solution-status">
+              <span className={'status-icon ' + (error ? 'status-error' : '')}>
+                {error ? '!' : '↗'}
+              </span>
+              <div>
+                <strong>{error ? 'Check your cube' : status}</strong>
+                <p>
+                  {error
+                    ? 'Correct the sticker net and try again.'
+                    : solution.length
+                      ? step === solution.length
+                        ? 'Nice work — every move is complete.'
+                        : 'Move ' +
+                          (step + 1) +
+                          ' of ' +
+                          solution.length +
+                          ' is next.'
+                      : 'Configure your stickers, then solve to see the move list.'}
+                </p>
               </div>
-              {mode === 'AI Code Review' && (
-                <div className="review-guide" role="note">
-                  <div className="review-guide-heading">
-                    <ShieldCheck size={18} />
-                    <div>
-                      <strong>Structured code review</strong>
-                      <span>Prioritized findings with actionable fixes</span>
-                    </div>
-                  </div>
-                  <div className="review-checklist">
-                    <span><b>01</b> Bugs & edge cases</span>
-                    <span><b>02</b> Security risks</span>
-                    <span><b>03</b> Performance & maintainability</span>
-                    <span><b>04</b> Tests to run</span>
-                  </div>
-                  <p>Attach a source file or paste code below. Findings will be prioritized by severity; the AI does not execute your code.</p>
-                </div>
-              )}
-              {mode === 'Code Playground' && (
-                <section className="playground-panel" aria-label="Interactive code playground">
-                  <div className="playground-toolbar">
-                    <label className="playground-language">
-                      <span>EDITOR LANGUAGE</span>
-                      <select value={playgroundLanguage} onChange={event => {
-                        const next = event.target.value as 'JavaScript' | 'HTML/CSS';
-                        setPlaygroundLanguage(next);
-                        setPlaygroundDocument('');
-                        setPlaygroundOutput('Run your code to see the result here.');
-                        setPlaygroundCode(next === 'JavaScript' ? "console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));" : '<!doctype html>\n<html>\n<head>\n  <style>body { font-family: system-ui; padding: 2rem; } h1 { color: seagreen; }</style>\n</head>\n<body>\n  <h1>Hello, DevHub!</h1>\n  <p>Edit this HTML and CSS, then preview it.</p>\n</body>\n</html>');
-                      }}>
-                        <option>JavaScript</option>
-                        <option>HTML/CSS</option>
-                      </select>
-                    </label>
-                    <div className="playground-actions">
-                      <button type="button" className="secondary-button" onClick={() => { setPlaygroundCode(playgroundLanguage === 'JavaScript' ? "console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));" : '<!doctype html>\n<html>\n<head>\n  <style>body { font-family: system-ui; padding: 2rem; } h1 { color: seagreen; }</style>\n</head>\n<body>\n  <h1>Hello, DevHub!</h1>\n  <p>Edit this HTML and CSS, then preview it.</p>\n</body>\n</html>'); setPlaygroundOutput('Starter code restored. Press Run to execute it.'); setPlaygroundDocument(''); }}><RotateCcw size={14} /> Reset</button>
-                      <button type="button" className="generate-button" onClick={runPlayground}><Play size={15} /> Run {playgroundLanguage === 'JavaScript' ? 'code' : 'preview'}</button>
-                    </div>
-                  </div>
-                  <label className="playground-editor-label">SOURCE CODE <span>Runs in a sandboxed browser frame; it is not sent to the server to execute.</span></label>
-                  <textarea className="playground-editor" aria-label="Playground source code" spellCheck={false} autoCapitalize="off" autoCorrect="off" value={playgroundCode} onChange={event => setPlaygroundCode(event.target.value)} />
-                  <div className="playground-output-wrap">
-                    <div className="playground-output-heading"><Terminal size={15} /> {playgroundLanguage === 'JavaScript' ? 'CONSOLE OUTPUT' : 'LIVE PREVIEW'}</div>
-                    {playgroundLanguage === 'JavaScript' ? <><pre className="playground-output" aria-live="polite">{playgroundOutput}</pre><iframe className="playground-runner-frame" title="Isolated JavaScript runner" sandbox="allow-scripts" ref={playgroundFrameRef} srcDoc={playgroundDocument} /></> : <iframe className="playground-preview" title="Sandboxed HTML/CSS preview" sandbox="allow-scripts" ref={playgroundFrameRef} srcDoc={playgroundDocument || '<!doctype html><html><body style="font-family:system-ui;padding:1rem;color:#64748b">Press “Run preview” to render your HTML/CSS.</body></html>'} />}
-                  </div>
-                  <div className="playground-footer-note">Only JavaScript and HTML/CSS run in this browser playground. Python, C/C++, and other languages are not executed here. Avoid entering secrets or sensitive data into code that you do not trust.</div>
-                  <div className="playground-ai-actions"><button type="button" className="secondary-button" onClick={() => sendPlaygroundTo('Debug code')}>Ask AI to debug</button><button type="button" className="secondary-button" onClick={() => sendPlaygroundTo('AI Code Review')}>Review this code</button></div>
-                </section>
-              )}
-              {mode !== 'Code Playground' && (
+            </div>
+            {error && (
+              <div className="error-box" role="alert">
+                {error}
+              </div>
+            )}
+            {solution.length > 0 && (
               <>
-              <div className="form-grid">
-                <label className="field-label">
-                  LANGUAGE / STACK
-                  <select
-                    value={language}
-                    onChange={event => setLanguage(event.target.value)}
-                  >
-                    {languages.map(item => (
-                      <option key={item}>{item}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="field-label">
-                  TASK TYPE
-                  <div className="task-chip">
-                    <activeMode.icon size={15} /> {mode}
+                <div className="progress-header">
+                  <span>PROGRESS</span>
+                  <strong>
+                    {step} <small>/ {solution.length}</small>
+                  </strong>
+                </div>
+                <div className="progress-track">
+                  <div
+                    className="progress-fill"
+                    style={{ width: progress + '%' }}
+                  />
+                </div>
+                <div className="current-move-panel">
+                  <div className="move-token">
+                    {step === solution.length ? '✓' : currentMove}
+                  </div>
+                  <div className="move-explanation">
+                    <span>NEXT MOVE</span>
+                    <strong>
+                      {step === solution.length
+                        ? 'All done!'
+                        : describeMove(currentMove)}
+                    </strong>
+                    <p>
+                      {step === solution.length
+                        ? 'Your cube should now be solved.'
+                        : moveDescription(currentMove)}
+                    </p>
                   </div>
                 </div>
-              </div>
-              <div className="file-upload-row">
-                <label className="attach-file-button">
-                  <Paperclip size={16} /> {attachedFile ? "Replace file" : "Attach code file"}
-                  <input type="file" accept=".txt,.md,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.less,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.kt,.kts,.c,.h,.cc,.cpp,.hpp,.cs,.go,.rs,.php,.rb,.swift,.sql,.sh,.bash,.ps1,.psm1,.toml,.ini,.vue,.svelte,.astro,.ipynb,.log" onChange={handleFileChange} />
-                </label>
-                <span className="file-upload-hint">Text/code files up to 100 KB. File contents are sent to Gemini for this request.</span>
-                {attachedFile && (
-                  <span className="attached-file">
-                    <FileCode2 size={14} /> {attachedFile.name}
-                    <button type="button" onClick={() => setAttachedFile(null)} aria-label="Remove attached file"><X size={14} /></button>
-                  </span>
-                )}
-              </div>
-              <label className="field-label prompt-label">
-                YOUR PROMPT <span>Be specific for the best results</span>
-                <textarea
-                  value={task}
-                  onChange={event => setTask(event.target.value)}
-                  placeholder={
-                    mode === 'AI Code Review'
-                      ? 'Paste code or attach a file. Tell us what to prioritize: correctness, security, performance, edge cases, or maintainability…'
-                      : mode === 'Explain code'
-                        ? 'Paste your code here, ask a question, or attach a code file above…'
-                        : mode === 'Debug code'
-                        ? 'Paste the code, error message, and expected behavior, or attach a code file above…'
-                        : mode === 'README writer'
-                          ? 'Describe your project, its features, setup steps, and intended audience…'
-                          : mode === 'Release notes'
-                            ? 'Describe the changes, fixes, and improvements in this release…'
-                            : 'Describe what you want to build, including inputs, outputs, and constraints…'
-                  }
-                  rows={6}
-                />
-              </label>
-              <div className="prompt-footer">
-                <span>
-                  <span className="keyboard-key">↵</span> Tip: include context
-                  and expected behavior
-                </span>
-                <button
-                  className="generate-button"
-                  onClick={generate}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <LoaderCircle className="spin" size={17} /> Working…
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck size={17} /> {mode === 'AI Code Review' ? 'Review code' : 'Generate response'}{' '}
-                      <ArrowUpRight size={16} />
-                    </>
-                  )}
-                </button>
-              </div>
-              {errorMessage && (
-                <div className="error-box">
-                  <X size={17} />
-                  <span>{errorMessage}</span>
+                <div className="move-controls">
                   <button
-                    onClick={() => setErrorMessage('')}
-                    aria-label="Dismiss error"
+                    className="control-button"
+                    onClick={() => useMoveIndex(0)}
+                    disabled={step === 0}
+                    aria-label="Go to first move"
                   >
-                    <X size={15} />
+                    |‹
+                  </button>
+                  <button
+                    className="control-button"
+                    onClick={() => useMoveIndex(step - 1)}
+                    disabled={step === 0}
+                    aria-label="Previous move"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    className="control-play"
+                    onClick={() => {
+                      if (step >= solution.length) setStep(0);
+                      setAutoPlay(value => !(value && step < solution.length));
+                    }}
+                    disabled={step === solution.length && !solution.length}
+                  >
+                    {autoPlay
+                      ? 'Ⅱ Pause'
+                      : step === solution.length
+                        ? '↻ Replay'
+                        : '▶ Play steps'}
+                  </button>
+                  <button
+                    className="control-button"
+                    onClick={() => useMoveIndex(step + 1)}
+                    disabled={step >= solution.length}
+                    aria-label="Next move"
+                  >
+                    ›
+                  </button>
+                  <button
+                    className="control-button"
+                    onClick={() => useMoveIndex(solution.length)}
+                    disabled={step === solution.length}
+                    aria-label="Go to last move"
+                  >
+                    ›|
                   </button>
                 </div>
-              )}
-              {result && (
-                <div className="result-panel">
-                  <div className="result-header">
-                    <div>
-                      <span className="result-indicator">
-                        <Check size={13} />
-                      </span>
-                      <strong>Generated result</strong>
-                      <small>
-                        {language} · {mode}
-                      </small>
-                    </div>
-                    <button className="copy-button" onClick={copyResult}>
-                      {copied ? <Check size={15} /> : <Copy size={15} />}
-                      {copied ? 'Copied' : 'Copy output'}
+                <div className="speed-row">
+                  <label htmlFor="speed">PLAYBACK SPEED</label>
+                  <select
+                    id="speed"
+                    value={speed}
+                    onChange={event => setSpeed(Number(event.target.value))}
+                  >
+                    <option value={1400}>Slow</option>
+                    <option value={900}>Normal</option>
+                    <option value={450}>Fast</option>
+                  </select>
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      resetSolution();
+                      setStatus(
+                        'Solution cleared. You can solve again any time.'
+                      );
+                    }}
+                  >
+                    Clear solution
+                  </button>
+                </div>
+                <div className="algorithm-list">
+                  <div className="algorithm-header">
+                    <span>FULL ALGORITHM</span>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        navigator.clipboard
+                          ?.writeText(solution.join(' '))
+                          .then(() =>
+                            setStatus('Algorithm copied to clipboard.')
+                          )
+                          .catch(() => setStatus(solution.join(' ')))
+                      }
+                    >
+                      Copy moves ⧉
                     </button>
                   </div>
-                  <pre className="result-content">{result}</pre>
-                  <div className="result-foot">
-                    <Sparkles size={14} /> Review and test generated code before
-                    using it in production.
+                  <div className="move-chips">
+                    {solution.map((move, index) => (
+                      <button
+                        key={index}
+                        className={
+                          'move-chip ' +
+                          (index < step
+                            ? 'done'
+                            : index === step
+                              ? 'active'
+                              : '')
+                        }
+                        onClick={() => useMoveIndex(index)}
+                        title={'Start at move ' + (index + 1)}
+                      >
+                        {move}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              )}
               </>
-              )}
-            </section>
-            <div className="bottom-note">
-              <span>
-                <BookOpen size={16} />
-              </span>
-              <p>
-                <strong>Good code starts with a clear question.</strong>
-                <br />
-                Share the context, constraints, and what success looks like.
-              </p>
-              <button
-                onClick={() => {
-                  setMode('Generate code');
-                  setTask('');
-                  setResult('');
-                }}
-              >
-                Start fresh <ArrowUpRight size={15} />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="content projects-content">
-            <div className="projects-heading">
-              <div>
-                <div className="eyebrow">
-                  <FolderGit2 size={14} /> YOUR WORK, ORGANIZED
-                </div>
-                <h1>
-                  My <span>Projects.</span>
-                </h1>
+            )}
+            {!solution.length && (
+              <div className="empty-solution">
+                <div className="empty-icon">↗</div>
+                <strong>Ready to find your way out?</strong>
                 <p>
-                  Keep your ideas, stacks, and next steps in one place. Projects
-                  are saved in this browser.
+                  Your solution will show up here as a clear sequence of turns.
                 </p>
               </div>
-              <button
-                className="generate-button"
-                onClick={() => setShowProjectForm(value => !value)}
-              >
-                <Plus size={17} /> New project
-              </button>
-            </div>
-            {showProjectForm && (
-              <form className="project-form" onSubmit={addProject}>
-                <div className="form-grid">
-                  <label className="field-label">
-                    PROJECT NAME
-                    <input
-                      value={projectName}
-                      onChange={event => setProjectName(event.target.value)}
-                      placeholder="e.g. Portfolio website"
-                      required
-                    />
-                  </label>
-                  <label className="field-label">
-                    LANGUAGE / STACK
-                    <select
-                      value={projectLanguage}
-                      onChange={event => setProjectLanguage(event.target.value)}
-                    >
-                      {languages.map(item => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="field-label">
-                  NOTES
-                  <textarea
-                    value={projectNotes}
-                    onChange={event => setProjectNotes(event.target.value)}
-                    placeholder="What are you building next?"
-                    rows={3}
-                  />
-                </label>
-                <div className="form-actions">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setShowProjectForm(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button className="generate-button" type="submit">
-                    <Plus size={16} /> Save project
-                  </button>
-                </div>
-              </form>
             )}
-            <div className="project-summary">
-              <div>
-                <span>Total projects</span>
-                <strong>{projects.length}</strong>
-              </div>
-              <div>
-                <span>In progress</span>
-                <strong>
-                  {
-                    projects.filter(project => project.status === 'In progress')
-                      .length
-                  }
-                </strong>
-              </div>
-              <div>
-                <span>Planned</span>
-                <strong>
-                  {
-                    projects.filter(project => project.status === 'Planned')
-                      .length
-                  }
-                </strong>
-              </div>
-            </div>
-            {projects.length ? (
-              <div className="project-grid">
-                {projects.map(project => (
-                  <article className="project-card" key={project.id}>
-                    <div className="project-card-top">
-                      <span className="project-symbol">
-                        <Code2 size={20} />
-                      </span>
-                      <button
-                        className="icon-button"
-                        onClick={() =>
-                          setProjects(current =>
-                            current.filter(item => item.id !== project.id)
-                          )
-                        }
-                        aria-label={'Delete ' + project.name}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    <h3>{project.name}</h3>
-                    <p>
-                      {project.notes ||
-                        'No notes added yet. Add details to remember your next steps.'}
-                    </p>
-                    <div className="project-card-bottom">
-                      <span className="language-tag">{project.language}</span>
-                      <label className="status-select">
-                        <select
-                          aria-label={'Status for ' + project.name}
-                          value={project.status}
-                          onChange={event =>
-                            setProjects(current =>
-                              current.map(item =>
-                                item.id === project.id
-                                  ? { ...item, status: event.target.value }
-                                  : item
-                              )
-                            )
-                          }
-                        >
-                          <option>Planned</option>
-                          <option>In progress</option>
-                          <option>Done</option>
-                        </select>
-                      </label>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-projects">
-                <FolderGit2 size={30} />
-                <h3>No projects yet</h3>
-                <p>Add a project to start organizing your work.</p>
-                <button
-                  className="generate-button"
-                  onClick={() => setShowProjectForm(true)}
-                >
-                  <Plus size={16} /> Create a project
-                </button>
-              </div>
-            )}
+          </section>
+        </div>
+
+        <section className="bottom-tip">
+          <div className="tip-icon">✳</div>
+          <div>
+            <strong>Small notation, big difference.</strong>
+            <p>
+              A move with a <code>'</code> symbol turns counter-clockwise. A{' '}
+              <code>2</code> means turn the face twice. Keep the cube oriented
+              the same way as you follow the steps.
+            </p>
           </div>
-        )}
-        <footer className="footer">
+          <button onClick={() => setShowHelp(true)}>Read the guide ↗</button>
+        </section>
+        <footer>
           <span>
-            DEVHUB <b>•</b> BUILT FOR BUILDERS
+            TWISTLAB <span className="footer-dot">•</span> A little logic, a lot
+            of twists.
           </span>
           <span>
-            Keep learning. Keep shipping. <Code2 size={14} />
+            Built for curious minds. <span className="footer-spark">✳</span>
           </span>
         </footer>
       </main>
     </div>
-    </>
   );
+}
+
+function FaceGrid({
+  face,
+  stickers,
+  onSticker,
+  disabled,
+}: {
+  face: Face;
+  stickers: string[];
+  onSticker: (face: Face, index: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="face-block">
+      <div className="face-label">
+        <span>{FACE_NAMES[face]}</span>
+        <b>{face}</b>
+      </div>
+      <div className="face-grid">
+        {stickers.map((sticker, index) => (
+          <button
+            key={index}
+            type="button"
+            className={'sticker ' + (index === 4 ? 'center-sticker' : '')}
+            style={{ background: PALETTE[sticker as Face]?.color ?? '#64748b' }}
+            onClick={() => onSticker(face, index)}
+            disabled={disabled || index === 4}
+            aria-label={
+              FACE_NAMES[face] +
+              ' sticker ' +
+              (index + 1) +
+              (index === 4
+                ? ', center'
+                : ', color ' + PALETTE[sticker as Face]?.name)
+            }
+            title={
+              index === 4
+                ? 'Center stickers are fixed'
+                : 'Tap to cycle sticker color'
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function describeMove(move: string) {
+  if (!move) return 'Solution complete';
+  const faceNames: Record<string, string> = {
+    U: 'Top face',
+    R: 'Right face',
+    F: 'Front face',
+    D: 'Bottom face',
+    L: 'Left face',
+    B: 'Back face',
+  };
+  return (
+    (faceNames[move[0]] || move[0]) +
+    (move.includes('2')
+      ? ' · Half turn'
+      : move.includes("'")
+        ? ' · Counter-clockwise'
+        : ' · Clockwise')
+  );
+}
+function moveDescription(move: string) {
+  if (!move) return 'No more turns needed.';
+  return move.includes('2')
+    ? 'Turn the ' + move[0] + ' face 180 degrees.'
+    : move.includes("'")
+      ? 'Turn the ' + move[0] + ' face counter-clockwise.'
+      : 'Turn the ' + move[0] + ' face clockwise.';
 }
 
 export default App;
