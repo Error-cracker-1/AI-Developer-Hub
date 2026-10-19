@@ -9,7 +9,10 @@
       "zero-move solution"
     ],
     "description": "Confirms the default solved cube returns an empty solution without crashing.",
-    "steps": ["Open TwistLab", "Press Solve cube"],
+    "steps": [
+      "Open TwistLab",
+      "Press Solve cube"
+    ],
     "expected": "The app reports that the cube is already solved and does not show a fake move sequence."
   },
   {
@@ -45,6 +48,26 @@
       "Press Replay after the final move"
     ],
     "expected": "The current move and progress update correctly; autoplay can be paused and replayed."
+  },
+  {
+    "name": "Camera scan and rotate the 3D cube preview",
+    "viewport": "mobile",
+    "covers": [
+      "camera permission and fallback",
+      "camera color sampling",
+      "scan face selection",
+      "3D cube view rotation",
+      "responsive camera controls"
+    ],
+    "description": "Checks the camera scanner exposes permission feedback and the cube preview has rotation controls.",
+    "steps": [
+      "Open TwistLab on a camera-capable secure browser",
+      "Tap Open camera and allow access if prompted",
+      "Choose the face shown in the preview",
+      "Capture 9 sticker colors and review the sticker net",
+      "Use the left and right rotate controls"
+    ],
+    "expected": "The selected face is updated with sampled colors, a review reminder appears, camera failures are explained, and the 3D-style preview rotates."
   },
   {
     "name": "Reject invalid sticker color counts",
