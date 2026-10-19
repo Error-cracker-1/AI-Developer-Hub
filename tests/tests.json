@@ -1,74 +1,65 @@
 [
   {
-    "name": "Generate a coding response",
+    "name": "Solve a solved cube",
     "sanity": true,
     "viewport": "desktop",
     "covers": [
-      "AI coding assistant",
-      "backend AI generation",
-      "language-aware prompts",
-      "render generated output"
+      "solved cube detection",
+      "solver initialization",
+      "zero-move solution"
     ],
-    "description": "Verifies a user can submit a coding task and receive a visible AI-generated result.",
-    "steps": [
-      "Choose Python as the language and Explain code as the mode",
-      "Enter a short code snippet or question",
-      "Submit the task"
-    ],
-    "expected": "A generated response appears in the result panel, and the form remains usable."
+    "description": "Confirms the default solved cube returns an empty solution without crashing.",
+    "steps": ["Open TwistLab", "Press Solve cube"],
+    "expected": "The app reports that the cube is already solved and does not show a fake move sequence."
   },
   {
-    "name": "Validate empty coding requests",
+    "name": "Scramble and solve a cube",
+    "viewport": "desktop",
+    "covers": [
+      "random scramble",
+      "cube state generation",
+      "Kociemba solution",
+      "solution move list"
+    ],
+    "description": "Verifies a generated scramble can be solved and produces a usable move list.",
+    "steps": [
+      "Press Random scramble",
+      "Press Solve cube and wait for solver initialization if prompted"
+    ],
+    "expected": "A solution appears with move count, full algorithm, progress controls, and no error."
+  },
+  {
+    "name": "Step through and replay the solution",
+    "viewport": "desktop",
+    "covers": [
+      "previous and next move navigation",
+      "solution progress",
+      "autoplay",
+      "playback speed"
+    ],
+    "description": "Checks the solution can be followed manually and through autoplay.",
+    "steps": [
+      "Generate and solve a random scramble",
+      "Press next move twice",
+      "Press Play steps, then Pause",
+      "Press Replay after the final move"
+    ],
+    "expected": "The current move and progress update correctly; autoplay can be paused and replayed."
+  },
+  {
+    "name": "Reject invalid sticker color counts",
     "viewport": "mobile",
-    "covers": ["empty-input validation", "mobile coding assistant workflow"],
-    "description": "Verifies an empty request is blocked with a clear message on a mobile-sized screen.",
-    "steps": [
-      "Open the AI workspace on mobile",
-      "Leave the task field empty",
-      "Press Generate"
-    ],
-    "expected": "A visible validation message appears and no AI request is submitted."
-  },
-  {
-    "name": "Save and remove a project",
-    "viewport": "desktop",
     "covers": [
-      "project organizer create",
-      "project organizer delete",
-      "local persistence"
+      "sticker editing",
+      "color count validation",
+      "mobile layout",
+      "invalid cube guardrail"
     ],
-    "description": "Verifies projects can be saved, remain after reload, and can be removed.",
+    "description": "Confirms an edited cube with incorrect color counts is rejected with a visible explanation.",
     "steps": [
-      "Open Projects",
-      "Add a project with a name and language",
-      "Refresh the page and remove the project"
+      "Tap a non-center sticker to cycle its color",
+      "Press Solve cube"
     ],
-    "expected": "The saved project is present after reload and disappears after removal."
-  },
-  {
-    "name": "Copy or recover from an AI error",
-    "viewport": "desktop",
-    "covers": [
-      "copy generated output",
-      "AI backend error handling",
-      "retry workflow"
-    ],
-    "description": "Verifies generated output has a copy action and an unsuccessful generation shows a recoverable error.",
-    "qa_faults": [
-      {
-        "method": "POST",
-        "path": "/api/assist",
-        "status": 500,
-        "body_json": {
-          "error": "simulated_failure"
-        }
-      }
-    ],
-    "steps": [
-      "Submit a coding task",
-      "When a response appears, use Copy",
-      "Submit another task while the service returns a simulated error"
-    ],
-    "expected": "The result can be copied, and a visible error message offers the user a way to retry."
+    "expected": "A visible validation error explains each color must appear exactly nine times and no solution is shown."
   }
 ]
