@@ -1,0 +1,13 @@
+import Cube from 'cubejs';
+export type Face = 'U' | 'R' | 'F' | 'D' | 'L' | 'B';
+export type Facelets = Record<Face, Face[]>;
+export const FACE_ORDER: Face[] = ['U', 'R', 'F', 'D', 'L', 'B'];
+export const FACE_NAMES: Record<Face, string> = { U: 'Up', R: 'Right', F: 'Front', D: 'Down', L: 'Left', B: 'Back' };
+export const PALETTE: Record<Face, { name: string; color: string }> = { U: { name: 'White', color: '#f8fafc' }, R: { name: 'Red', color: '#ef4444' }, F: { name: 'Green', color: '#22a06b' }, D: { name: 'Yellow', color: '#facc15' }, L: { name: 'Orange', color: '#f97316' }, B: { name: 'Blue', color: '#3b82f6' } };
+export const SOLVED = FACE_ORDER.map(face => face.repeat(9)).join('');
+export const emptyFaces = (): Facelets => ({ U: Array(9).fill('U') as Face[], R: Array(9).fill('R') as Face[], F: Array(9).fill('F') as Face[], D: Array(9).fill('D') as Face[], L: Array(9).fill('L') as Face[], B: Array(9).fill('B') as Face[] });
+export const fromString = (state: string): Facelets => { const faces = {} as Facelets; FACE_ORDER.forEach((face, i) => { faces[face] = state.slice(i * 9, i * 9 + 9).split('') as Face[]; }); return faces; };
+export const toString = (faces: Facelets) => FACE_ORDER.map(face => faces[face].join('')).join('');
+export const applyMoves = (state: string, moves: string[]) => { if (!moves.length) return state; const cube = Cube.fromString(state); cube.move(moves.join(' ')); return cube.asString(); };
+export const randomScramble = (length = 20) => { const moves = ['U', "U'", 'U2', 'R', "R'", 'R2', 'F', "F'", 'F2', 'D', "D'", 'D2', 'L', "L'", 'L2', 'B', "B'", 'B2']; const result: string[] = []; let previous = ''; while (result.length < length) { const next = moves[Math.floor(Math.random() * moves.length)]; if (next[0] !== previous) { result.push(next); previous = next[0]; } } return result; };
+export { Cube };
