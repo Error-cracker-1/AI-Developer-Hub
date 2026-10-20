@@ -1,88 +1,84 @@
 [
   {
-    "name": "Solve a solved cube",
+    "name": "Solved cube has no fake moves",
     "sanity": true,
     "viewport": "desktop",
     "covers": [
-      "solved cube detection",
+      "solved state detection",
       "solver initialization",
-      "zero-move solution"
+      "zero move solution"
     ],
-    "description": "Confirms the default solved cube returns an empty solution without crashing.",
+    "description": "Verifies the solved default cube is accepted and does not invent moves.",
     "steps": [
       "Open TwistLab",
       "Press Solve cube"
     ],
-    "expected": "The app reports that the cube is already solved and does not show a fake move sequence."
+    "expected": "The app reports the cube is already solved and displays no fake sequence."
   },
   {
-    "name": "Scramble and solve a cube",
+    "name": "Scramble and verify a solution",
     "viewport": "desktop",
     "covers": [
       "random scramble",
-      "cube state generation",
-      "Kociemba solution",
-      "solution move list"
+      "two-phase solver",
+      "solution verification",
+      "algorithm output"
     ],
-    "description": "Verifies a generated scramble can be solved and produces a usable move list.",
+    "description": "Verifies a generated scramble can be solved and the output is checked against the solved state.",
     "steps": [
-      "Press Random scramble",
-      "Press Solve cube and wait for solver initialization if prompted"
+      "Press Scramble",
+      "Press Solve cube and wait for solver preparation"
     ],
-    "expected": "A solution appears with move count, full algorithm, progress controls, and no error."
+    "expected": "A move list appears, the full algorithm is available, and no validation error is shown."
   },
   {
-    "name": "Step through and replay the solution",
+    "name": "Paint stickers in 3D and flat net",
     "viewport": "desktop",
     "covers": [
-      "previous and next move navigation",
-      "solution progress",
-      "autoplay",
-      "playback speed"
+      "3D sticker picking",
+      "sticker net editing",
+      "fixed centers",
+      "undo editing"
     ],
-    "description": "Checks the solution can be followed manually and through autoplay.",
+    "description": "Checks stickers can be edited from the interactive canvas and the flat net, with undo available.",
     "steps": [
-      "Generate and solve a random scramble",
-      "Press next move twice",
-      "Press Play steps, then Pause",
-      "Press Replay after the final move"
+      "Tap a non-center sticker in the 3D cube",
+      "Use Undo edit",
+      "Tap a non-center sticker in the flat net"
     ],
-    "expected": "The current move and progress update correctly; autoplay can be paused and replayed."
+    "expected": "Sticker colors update, centers remain fixed, and undo restores the prior cube state."
   },
   {
-    "name": "Camera scan and rotate the 3D cube preview",
+    "name": "Camera color assist and mobile layout",
     "viewport": "mobile",
     "covers": [
-      "camera permission and fallback",
-      "camera color sampling",
-      "scan face selection",
-      "3D cube view rotation",
-      "responsive camera controls"
+      "camera permission feedback",
+      "face selection",
+      "local color sampling",
+      "responsive layout"
     ],
-    "description": "Checks the camera scanner exposes permission feedback and the cube preview has rotation controls.",
+    "description": "Checks the camera flow is usable on mobile and has a manual fallback.",
     "steps": [
-      "Open TwistLab on a camera-capable secure browser",
-      "Tap Open camera and allow access if prompted",
-      "Choose the face shown in the preview",
-      "Capture 9 sticker colors and review the sticker net",
-      "Use the left and right rotate controls"
+      "Open TwistLab on a secure camera-capable browser",
+      "Open camera and allow access",
+      "Choose a face and capture colors",
+      "Review the flat sticker map"
     ],
-    "expected": "The selected face is updated with sampled colors, a review reminder appears, camera failures are explained, and the 3D-style preview rotates."
+    "expected": "The chosen face is updated locally with a reminder to review detected colors; camera failure explains manual entry."
   },
   {
-    "name": "Reject invalid sticker color counts",
+    "name": "Reject invalid cube sticker counts",
     "viewport": "mobile",
     "covers": [
-      "sticker editing",
-      "color count validation",
-      "mobile layout",
+      "color-count validation",
+      "center validation",
       "invalid cube guardrail"
     ],
-    "description": "Confirms an edited cube with incorrect color counts is rejected with a visible explanation.",
+    "description": "Confirms invalid sticker arrangements are not passed to the solver.",
     "steps": [
-      "Tap a non-center sticker to cycle its color",
+      "Change a non-center sticker",
       "Press Solve cube"
     ],
-    "expected": "A visible validation error explains each color must appear exactly nine times and no solution is shown."
+    "expected": "A visible validation message reports incorrect counts or centers and no solution is shown."
   }
 ]
