@@ -1,0 +1,3 @@
+import { FACE_ORDER, FACE_NAMES, Facelets, toString } from './cube';
+export type Validation = { valid: boolean; errors: string[]; counts: Record<string, number> };
+export function validateCube(faces: Facelets): Validation { const state = toString(faces); const counts = Object.fromEntries(FACE_ORDER.map(face => [face, state.split(face).length - 1])); const errors: string[] = []; FACE_ORDER.forEach(face => { if (counts[face] !== 9) errors.push(`${FACE_NAMES[face]} (${face}) has ${counts[face]} stickers; it needs 9.`); if (faces[face][4] !== face) errors.push(`${FACE_NAMES[face]} center must stay ${face}.`); }); return { valid: errors.length === 0, errors, counts }; }
