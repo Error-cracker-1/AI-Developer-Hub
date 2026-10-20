@@ -110,6 +110,12 @@ function App() {
       'B'.repeat(9);
 
   useEffect(() => {
+    if (!cameraOn || !streamRef.current || !videoRef.current) return;
+    videoRef.current.srcObject = streamRef.current;
+    void videoRef.current.play().catch(() => setCameraError('Tap the camera preview if playback is paused by your browser.'));
+  }, [cameraOn]);
+
+  useEffect(() => {
     if (!autoPlay || step >= solution.length) {
       if (autoPlay) setAutoPlay(false);
       return;
@@ -151,7 +157,6 @@ function App() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
       setCameraOn(true);
     } catch {
       setCameraError('Camera permission was blocked or no camera was found. Allow camera access and try again, or enter colors manually.');
@@ -433,15 +438,7 @@ function App() {
               </>}
               {cameraError && <p className="scan-message" role="status">{cameraError}</p>}
             </section>
-            <div className="cube-3d-panel">
-              <div><strong>3D cube preview</strong><p>Rotate the view to compare the visible faces with your real cube.</p></div>
-              <div className="cube-3d-stage"><div className="mini-cube cube-3d-object" style={{ transform: 'rotate(-26deg) rotateY(' + viewAngle + 'deg)' }} aria-label="Rotatable 3D-style cube preview">
-                <div className="mini-face mini-top">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ background: PALETTE[displayedFaces.U[i] as Face].color }} />)}</div>
-                <div className="mini-face mini-left">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ background: PALETTE[displayedFaces.F[i] as Face].color }} />)}</div>
-                <div className="mini-face mini-right">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ background: PALETTE[displayedFaces.R[i] as Face].color }} />)}</div>
-              </div></div>
-              <div className="cube-3d-controls"><button className="control-button" onClick={() => setViewAngle(angle => angle - 25)} aria-label="Rotate cube view left">↶</button><span>{viewAngle % 360}°</span><button className="control-button" onClick={() => setViewAngle(angle => angle + 25)} aria-label="Rotate cube view right">↷</button></div>
-            </div>
+            <RealCube3D faces={displayedFaces} />
             <div
               className="cube-net"
               aria-label="Editable Rubik's cube sticker net"
@@ -858,6 +855,23 @@ function moveDescription(move: string) {
     : move.includes("'")
       ? 'Turn the ' + move[0] + ' face counter-clockwise.'
       : 'Turn the ' + move[0] + ' face clockwise.';
+}
+
+function RealCube3D({ faces }: { faces: Facelets }) {
+  const [rotation, setRotation] = useState({ x: -24, y: -32 });
+  const drag = useRef<{ x: number; y: number; rotationX: number; rotationY: number } | null>(null);
+  const turn = (dx: number, dy: number) => setRotation(value => ({ x: value.x + dy, y: value.y + dx }));
+  const panel = (face: Face, transform: string) => <div className={'real-cube-face real-face-' + face} key={face} style={{ transform }} aria-label={FACE_NAMES[face] + ' face'}>{faces[face].map((sticker, index) => <i key={index} style={{ background: PALETTE[sticker as Face]?.color ?? '#111' }} title={PALETTE[sticker as Face]?.name ?? 'Unknown'} />)}</div>;
+  return <section className="real-cube-panel" aria-label="Interactive three-dimensional Rubik's cube">
+    <div className="real-cube-heading"><div><span className="section-kicker">LIVE 3D MODEL</span><h3>Rotate your cube</h3><p>Drag the cube with your finger or mouse. The stickers update as you step through the solution.</p></div><span className="live-badge">● LIVE</span></div>
+    <div className="real-cube-stage" onPointerDown={event => { drag.current = { x: event.clientX, y: event.clientY, rotationX: rotation.x, rotationY: rotation.y }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={event => { if (drag.current) setRotation({ x: drag.current.rotationX + (event.clientY - drag.current.y) * 0.8, y: drag.current.rotationY + (event.clientX - drag.current.x) * 0.8 }); }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+      <div className="real-cube" style={{ transform: 'rotateX(' + rotation.x + 'deg) rotateY(' + rotation.y + 'deg)' }}>
+        {panel('F', 'translateZ(78px)')}{panel('B', 'rotateY(180deg) translateZ(78px)')}{panel('R', 'rotateY(90deg) translateZ(78px)')}{panel('L', 'rotateY(-90deg) translateZ(78px)')}{panel('U', 'rotateX(90deg) translateZ(78px)')}{panel('D', 'rotateX(-90deg) translateZ(78px)')}
+      </div>
+    </div>
+    <div className="real-cube-controls"><button className="button-secondary" onClick={() => turn(-35, 0)}>↶ Rotate left</button><button className="button-secondary" onClick={() => setRotation({ x: -24, y: -32 })}>Reset view</button><button className="button-secondary" onClick={() => turn(35, 0)}>Rotate right ↷</button></div>
+    <p className="real-cube-note">Drag to inspect all six faces · This is a rotatable 3D cube, not a static illustration.</p>
+  </section>;
 }
 
 function hexToRgb(hex: string): number[] {
