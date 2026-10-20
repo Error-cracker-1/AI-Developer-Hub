@@ -83,7 +83,7 @@ export default function App() {
     try {
       await new Promise<void>((resolve, reject) => window.setTimeout(() => { try { Cube.initSolver(); resolve(); } catch (cause) { reject(cause); } }, 25));
       const answer = Cube.fromString(state).solve().trim();
-      const moves = answer ? answer.split(/\\s+/) : [];
+      const moves = answer ? answer.split(/\s+/) : [];
       const checkCube = Cube.fromString(state);
       if (moves.length) checkCube.move(moves.join(' '));
       if (checkCube.asString() !== SOLVED) throw new Error('The returned algorithm failed verification. Review the stickers and retry.');
