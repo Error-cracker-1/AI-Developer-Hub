@@ -13,7 +13,7 @@ export default function App() {
   const [startState, setStartState] = useState('');
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(700);
+  const [speed, setSpeed] = useState(2800);
   const [mode, setMode] = useState<Mode>('fast');
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Ready to solve');
@@ -37,7 +37,7 @@ export default function App() {
 
   useEffect(() => {
     if (!playing || step >= solution.length) { if (playing) setPlaying(false); return; }
-    const timer = window.setTimeout(() => { setTurnKey(solution[step] + '-' + Date.now()); setStep(current => Math.min(current + 1, solution.length)); }, speed);
+    const timer = window.setTimeout(() => { setTurnKey(solution[step] + '-' + Date.now()); setStep(current => Math.min(current + 1, solution.length)); }, speed + 300);
     return () => window.clearTimeout(timer);
   }, [playing, step, solution, speed]);
 
@@ -93,7 +93,7 @@ export default function App() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not solve this cube. Check the sticker colors.'); setStatus('Could not calculate a solution.'); }
     finally { setBusy(false); }
   };
-  const jumpTo = (index: number) => { setPlaying(false); const next = Math.max(0, Math.min(solution.length, index)); setStep(next); if (solution[next]) setTurnKey(solution[next] + '-' + Date.now()); };
+  const jumpTo = (index: number) => { setPlaying(false); const next = Math.max(0, Math.min(solution.length, index)); setStep(next); if (next > 0 && solution[next - 1]) setTurnKey(solution[next - 1] + '-' + Date.now()); };
   const startCamera = async () => {
     setCameraError('');
     if (!navigator.mediaDevices?.getUserMedia) { setCameraError('Camera access requires a supported browser over HTTPS. You can still enter colors manually.'); return; }
@@ -132,7 +132,7 @@ export default function App() {
       <div className="main-grid">
         <section className="panel cube-panel"><div className="panel-heading"><div><span className="step-label">01 / SETUP</span><h2>Your cube</h2></div><button className="text-button" onClick={reset}>Reset ↺</button></div>
           <div className="cube-status"><span className={solved ? 'state-badge solved' : 'state-badge'}><i />{solved ? 'Solved state' : 'Custom state'}</span><span className="hint">Drag to rotate · tap a sticker to paint</span></div>
-          <CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} />
+          <CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} />
           <div className="cube-tools"><button className="secondary-button" onClick={undo} disabled={!history.length}>↶ Undo edit</button><button className="secondary-button" onClick={fillSolved}>Fill solved</button><button className="secondary-button" onClick={scrambleCube}>⤨ Scramble</button></div>
           <div className="color-legend">{FACE_ORDER.map(face => <button key={face} title={`Select ${PALETTE[face].name} color`} onClick={() => setStatus(`${PALETTE[face].name} is color ${face}. Tap any non-center sticker to cycle colors.`)}><i style={{ background: PALETTE[face].color }} />{PALETTE[face].name}</button>)}</div>
           <h3 className="subheading">Sticker map <span>Tap a tile to cycle colors</span></h3><CubeNet faces={displayedFaces} onSticker={paintSticker} disabled={busy || Boolean(solution.length)} />
