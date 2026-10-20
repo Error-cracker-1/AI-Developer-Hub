@@ -1,4 +1,16 @@
 type Props = { step: number; total: number; playing: boolean; onPrevious: () => void; onNext: () => void; onPlay: () => void; onReplay: () => void; speed: number; onSpeed: (value: number) => void };
 export default function MoveControls({ step, total, playing, onPrevious, onNext, onPlay, onReplay, speed, onSpeed }: Props) {
-  return <div className="move-controls"><div className="progress-track"><span style={{ width: `${total ? step / total * 100 : 0}%` }} /></div><div className="progress-label"><span>Move {total ? Math.min(step + 1, total) : 0} of {total}</span><b>{total ? Math.round(step / total * 100) : 0}%</b></div><div className="control-row"><button className="icon-button" onClick={onPrevious} disabled={step === 0} aria-label="Previous move">←</button><button className="play-button" onClick={onPlay} disabled={!total}>{playing ? 'Ⅱ Pause' : '▶ Play steps'}</button><button className="icon-button" onClick={onNext} disabled={step >= total - 1} aria-label="Next move">→</button><button className="icon-button" onClick={onReplay} disabled={!total} aria-label="Replay solution">↻</button></div><label className="speed-control">Animation speed <b>{speed} ms</b><input type="range" min="250" max="1600" step="50" value={speed} onChange={event => onSpeed(Number(event.target.value))} /></label></div>;
+  return <div className="move-controls">
+    <div className="progress-track"><span style={{ width: `${total ? step / total * 100 : 0}%` }} /></div>
+    <div className="progress-label"><span>Move {total ? Math.min(step + 1, total) : 0} of {total}</span><b>{total ? Math.round(step / total * 100) : 0}%</b></div>
+    <div className="control-row">
+      <button className="icon-button" onClick={onPrevious} disabled={step === 0} aria-label="Previous move">←</button>
+      <button className="play-button" onClick={onPlay} disabled={!total}>{playing ? 'Ⅱ Pause' : '▶ Play steps'}</button>
+      <button className="icon-button" onClick={onNext} disabled={step >= total - 1} aria-label="Next move">→</button>
+      <button className="icon-button" onClick={onReplay} disabled={!total} aria-label="Replay solution">↻</button>
+    </div>
+    <label className="speed-control">Turn duration <b>{(speed / 1000).toFixed(1)} s</b>
+      <input type="range" min="1200" max="5000" step="200" value={speed} onChange={event => onSpeed(Number(event.target.value))} />
+    </label>
+  </div>;
 }
