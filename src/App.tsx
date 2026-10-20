@@ -27,6 +27,7 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [turnKey, setTurnKey] = useState('');
   const displayedState = useMemo(() => startState && solution.length ? applyMoves(startState, solution.slice(0, step)) : toString(faces), [startState, solution, step, faces]);
   const displayedFaces = useMemo(() => fromString(displayedState), [displayedState]);
@@ -49,6 +50,14 @@ export default function App() {
   }, [cameraOn]);
 
   useEffect(() => () => streamRef.current?.getTracks().forEach(track => track.stop()), []);
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setIsFullscreen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', onKeyDown); };
+  }, [isFullscreen]);
 
   const clearSolution = () => { setPlaying(false); setSolution([]); setStartState(''); setStep(0); setAlgorithm(''); };
   const paintSticker = (face: Face, index: number) => {
@@ -130,7 +139,7 @@ export default function App() {
       <section className="hero"><div className="eyebrow">INTERACTIVE CUBE LAB <span>•</span> 3×3</div><h1>Crack the cube.<br/><em>One move at a time.</em></h1><p>Paint your stickers, rotate a real 3D cube, validate the setup, then follow a verified solution.</p><div className="hero-pills"><span>3D INTERACTION</span><span>STEP-BY-STEP</span><span>NO ACCOUNT NEEDED</span></div></section>
       {showHelp && <section className="help-panel"><button className="close-help" onClick={() => setShowHelp(false)}>×</button><h3>How to use TwistLab</h3><ol><li>Drag the 3D cube to rotate it; scroll or pinch to zoom.</li><li>Tap a sticker in the 3D view or the flat net to cycle its color. Center stickers are fixed.</li><li>Each color must appear exactly nine times. A color-count check runs before solving.</li><li>Choose Fast or Guided view, then solve and use the controls to follow the verified algorithm.</li></ol><p>Notation: <b>R</b> is the right face clockwise, <b>R'</b> is counter-clockwise, and <b>R2</b> is a half-turn.</p></section>}
       <div className="main-grid">
-        <section className="panel cube-panel"><div className="panel-heading"><div><span className="step-label">01 / SETUP</span><h2>Your cube</h2></div><button className="text-button" onClick={reset}>Reset ↺</button></div>
+        <section className="panel cube-panel"><div className="panel-heading"><div><span className="step-label">01 / SETUP</span><h2>Your cube</h2></div><div className="cube-heading-actions"><button className="secondary-button fullscreen-trigger" onClick={() => setIsFullscreen(true)} aria-label="Open full-screen 3D cube">⛶ Full screen</button><button className="text-button" onClick={reset}>Reset ↺</button></div></div>
           <div className="cube-status"><span className={solved ? 'state-badge solved' : 'state-badge'}><i />{solved ? 'Solved state' : 'Custom state'}</span><span className="hint">Drag to rotate · tap a sticker to paint</span></div>
           <CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} />
           <div className="cube-tools"><button className="secondary-button" onClick={undo} disabled={!history.length}>↶ Undo edit</button><button className="secondary-button" onClick={fillSolved}>Fill solved</button><button className="secondary-button" onClick={scrambleCube}>⤨ Scramble</button></div>
@@ -157,6 +166,14 @@ export default function App() {
       </div>
       <footer><span>TWISTLAB / 3×3 SOLVER</span><span>Cube state stays in this tab · no sign-in</span></footer>
     </main>
+
+      {isFullscreen && <div className="cube-fullscreen" role="dialog" aria-modal="true" aria-label="Full-screen 3D cube and playback controls">
+        <header className="fullscreen-header"><div><span className="step-label">TWISTLAB / IMMERSIVE VIEW</span><h2>3D Cube Playback</h2></div><button className="fullscreen-close" onClick={() => setIsFullscreen(false)} aria-label="Close full-screen view">✕ <span>Exit full screen</span></button></header>
+        <div className="fullscreen-cube-stage"><CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} /></div>
+        <div className="fullscreen-move-summary"><span className="current-kicker">CURRENT MOVE</span><strong>{currentMove || (solution.length && step === solution.length ? '✓ Solved' : 'Ready to play')}</strong><span>{solution.length ? 'Move ' + Math.min(step + 1, solution.length) + ' of ' + solution.length + ' · ' + progress + '% complete' : 'Solve the cube to enable playback.'}</span></div>
+        <div className="fullscreen-controls"><MoveControls step={step} total={solution.length} playing={playing} onPrevious={() => jumpTo(step - 1)} onNext={() => jumpTo(step + 1)} onPlay={() => { if (step >= solution.length) setStep(0); setPlaying(value => !value); }} onReplay={() => { setPlaying(false); setStep(0); }} speed={speed} onSpeed={setSpeed} /></div>
+        <p className="fullscreen-hint">Drag the cube to rotate the view · pinch or scroll to zoom · press Esc to exit</p>
+      </div>}
   </div>;
 }
 function explainMove(move: string) {
