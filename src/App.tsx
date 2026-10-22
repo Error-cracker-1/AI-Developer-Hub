@@ -258,13 +258,32 @@ function App() {
   async function copyResult() {
     if (!result) return;
     try {
-      await navigator.clipboard.writeText(result);
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(result);
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      setErrorMessage(
-        'Copy was blocked by your browser. Select the result text and copy it manually.'
-      );
+      // Fallback for mobile browsers where clipboard permission is unavailable.
+      const field = document.createElement('textarea');
+      field.value = result;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      field.style.fontSize = '16px';
+      document.body.appendChild(field);
+      field.select();
+      field.setSelectionRange(0, field.value.length);
+      const success = document.execCommand('copy');
+      document.body.removeChild(field);
+      if (success) {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1800);
+      } else {
+        setErrorMessage('Copy was blocked by your browser. Long-press the result text and choose Copy.');
+      }
     }
   }
 
