@@ -21,6 +21,7 @@ export default function App() {
   const [scramble, setScramble] = useState('');
   const [algorithm, setAlgorithm] = useState('');
   const [history, setHistory] = useState<string[]>([]);
+  const [redoHistory, setRedoHistory] = useState<string[]>([]);
   const [cameraOn, setCameraOn] = useState(false);
   const [scanFace, setScanFace] = useState<Face>('F');
   const [cameraError, setCameraError] = useState('');
@@ -63,24 +64,39 @@ export default function App() {
   const paintSticker = (face: Face, index: number) => {
     if (index === 4 || busy) return;
     setHistory(previous => [...previous.slice(-29), toString(faces)]);
+    setRedoHistory([]);
     clearSolution(); setError(''); setStatus('Sticker updated. Check the color counts before solving.');
     setFaces(previous => ({ ...previous, [face]: previous[face].map((color, i) => i === index ? FACE_ORDER[(FACE_ORDER.indexOf(color) + 1) % 6] : color) }));
   };
   const setStickerColor = (face: Face, index: number, color: Face) => {
     if (index === 4 || busy) return;
     setHistory(previous => [...previous.slice(-29), toString(faces)]);
+    setRedoHistory([]);
     clearSolution(); setFaces(previous => ({ ...previous, [face]: previous[face].map((value, i) => i === index ? color : value) }));
   };
   const undo = () => {
     const previous = history[history.length - 1];
     if (!previous) return;
-    setFaces(fromString(previous)); setHistory(items => items.slice(0, -1)); clearSolution(); setStatus('Last sticker edit undone.');
+    setRedoHistory(items => [...items.slice(-29), toString(faces)]);
+    setFaces(fromString(previous));
+    setHistory(items => items.slice(0, -1));
+    clearSolution();
+    setStatus('Last change undone. Use Redo to restore it.');
   };
-  const reset = () => { setFaces(emptyFaces()); clearSolution(); setScramble(''); setError(''); setStatus('Cube reset to solved state.'); };
+  const redo = () => {
+    const next = redoHistory[redoHistory.length - 1];
+    if (!next) return;
+    setHistory(items => [...items.slice(-29), toString(faces)]);
+    setFaces(fromString(next));
+    setRedoHistory(items => items.slice(0, -1));
+    clearSolution();
+    setStatus('Change restored.');
+  };
+  const reset = () => { setFaces(emptyFaces()); setHistory([]); setRedoHistory([]); clearSolution(); setScramble(''); setError(''); setStatus('Cube reset to solved state.'); };
   const scrambleCube = () => {
     const moves = randomScramble();
     const state = applyMoves(SOLVED, moves);
-    setFaces(fromString(state)); setScramble(moves.join(' ')); setHistory(items => [...items.slice(-29), toString(faces)]);
+    setFaces(fromString(state)); setScramble(moves.join(' ')); setHistory(items => [...items.slice(-29), toString(faces)]); setRedoHistory([]);
     clearSolution(); setError(''); setStatus('Scramble generated. Solve it when ready.');
   };
   const solve = async () => {
@@ -142,7 +158,7 @@ export default function App() {
         <section className="panel cube-panel"><div className="panel-heading"><div><span className="step-label">01 / SETUP</span><h2>Your cube</h2></div><div className="cube-heading-actions"><button className="secondary-button fullscreen-trigger" onClick={() => setIsFullscreen(true)} aria-label="Open full-screen 3D cube">⛶ Full screen</button><button className="text-button" onClick={reset}>Reset ↺</button></div></div>
           <div className="cube-status"><span className={solved ? 'state-badge solved' : 'state-badge'}><i />{solved ? 'Solved state' : 'Custom state'}</span><span className="hint">Drag to rotate · tap a sticker to paint</span></div>
           <CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} />
-          <div className="cube-tools"><button className="secondary-button" onClick={undo} disabled={!history.length}>↶ Undo edit</button><button className="secondary-button" onClick={fillSolved}>Fill solved</button><button className="secondary-button" onClick={scrambleCube}>⤨ Scramble</button></div>
+          <div className="cube-tools"><button className="secondary-button" onClick={undo} disabled={!history.length}>↶ Undo</button><button className="secondary-button" onClick={redo} disabled={!redoHistory.length}>↷ Redo</button><button className="secondary-button" onClick={fillSolved}>Fill solved</button><button className="secondary-button" onClick={scrambleCube}>⤨ Scramble</button></div>
           <div className="color-legend">{FACE_ORDER.map(face => <button key={face} title={`Select ${PALETTE[face].name} color`} onClick={() => setStatus(`${PALETTE[face].name} is color ${face}. Tap any non-center sticker to cycle colors.`)}><i style={{ background: PALETTE[face].color }} />{PALETTE[face].name}</button>)}</div>
           <h3 className="subheading">Sticker map <span>Tap a tile to cycle colors</span></h3><CubeNet faces={displayedFaces} onSticker={paintSticker} disabled={busy || Boolean(solution.length)} />
           <div className={validation.valid ? 'validation-box good' : 'validation-box'}><strong>{validation.valid ? '✓ Color counts look balanced' : '⚠ Check cube colors'}</strong><div className="count-row">{FACE_ORDER.map(face => <span key={face}><i style={{ background: PALETTE[face].color }} />{face}: {validation.counts[face]}/9</span>)}</div>{!validation.valid && <p>Every color needs nine stickers and centers must stay on their matching faces. A valid count does not guarantee every physical cube arrangement is reachable.</p>}</div>
