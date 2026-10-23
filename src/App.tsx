@@ -255,6 +255,19 @@ function App() {
     }
   }
 
+  function downloadResult() {
+    if (!result) return;
+    const blob = new Blob([result], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `devhub-${mode.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-result.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function copyResult() {
     if (!result) return;
     try {
@@ -643,10 +656,15 @@ function App() {
                         {language} · {mode}
                       </small>
                     </div>
-                    <button className="copy-button" onClick={copyResult}>
-                      {copied ? <Check size={15} /> : <Copy size={15} />}
-                      {copied ? 'Copied' : 'Copy output'}
-                    </button>
+                    <div className="result-actions">
+                      <button className="copy-button" onClick={copyResult}>
+                        {copied ? <Check size={15} /> : <Copy size={15} />}
+                        {copied ? 'Copied' : 'Copy output'}
+                      </button>
+                      <button className="copy-button" onClick={downloadResult}>
+                        <FileCode2 size={15} /> Download .txt
+                      </button>
+                    </div>
                   </div>
                   <pre className="result-content">{result}</pre>
                   <div className="result-foot">
