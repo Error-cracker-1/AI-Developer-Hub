@@ -149,6 +149,20 @@ export default function App() {
   const fillSolved = () => { setHistory(items => [...items.slice(-29), toString(faces)]); setFaces(emptyFaces()); clearSolution(); setError(''); setStatus('Solved color layout restored.'); };
   const copyAlgorithm = async () => { try { await navigator.clipboard.writeText(algorithm); setStatus('Algorithm copied to clipboard.'); } catch { setStatus('Select and copy the algorithm shown below.'); } };
 
+  const downloadAlgorithm = () => {
+    if (!algorithm) return;
+    const blob = new Blob([algorithm.trim() + '\n'], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'twistlab-solution-algorithm.txt';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Solution algorithm downloaded as a text file.');
+  };
+
   return <div className="app-shell">
     <header className="topbar"><a className="brand" href="#" aria-label="TwistLab home"><span className="brand-cube">✣</span><span>TWIST<span>LAB</span></span></a><div className="topbar-actions"><span className="privacy-pill"><i /> Local-first</span><button className="quiet-button" onClick={() => setShowHelp(value => !value)}>How to use</button></div></header>
     <main className="page">
@@ -172,7 +186,7 @@ export default function App() {
         <section className="panel solution-panel"><div className="panel-heading"><div><span className="step-label">02 / SOLUTION</span><h2>Move guide</h2></div><span className="move-total">{solution.length ? `${solution.length} MOVES` : 'WAITING'}</span></div>
           <div className="mode-switch" role="group" aria-label="Solution view mode"><button className={mode === 'fast' ? 'selected' : ''} onClick={() => setMode('fast')}>⚡ Fast solve</button><button className={mode === 'guided' ? 'selected' : ''} onClick={() => setMode('guided')}>☷ Guided view</button></div>
           <div className="current-move-card"><span className="current-kicker">CURRENT MOVE</span><div className="current-move">{currentMove || (solution.length && step === solution.length ? '✓' : '—')}</div><strong>{solution.length && step === solution.length ? 'Cube solved' : currentMove ? `Move ${step + 1} of ${solution.length}` : 'Ready when you are'}</strong><p>{currentMove ? explainMove(currentMove) : status}</p><div className="big-progress"><span style={{ width: `${progress}%` }} /></div><div className="progress-caption"><span>{progress}% complete</span><span>{solution.length - step} remaining</span></div></div>
-          <div className="solution-actions"><button className="primary-button" onClick={solve} disabled={busy}>{busy ? 'Preparing solver…' : 'Solve cube ↗'}</button><button className="secondary-button" onClick={copyAlgorithm} disabled={!solution.length}>Copy algorithm</button></div>
+          <div className="solution-actions"><button className="primary-button" onClick={solve} disabled={busy}>{busy ? 'Preparing solver…' : 'Solve cube ↗'}</button><button className="secondary-button" onClick={copyAlgorithm} disabled={!solution.length}>Copy algorithm</button><button className="secondary-button" onClick={downloadAlgorithm} disabled={!solution.length}>Download solution</button></div>
           {error && <div className="error-box" role="alert"><b>Cube needs attention</b><p>{error}</p></div>}
           <MoveControls step={step} total={solution.length} playing={playing} onPrevious={() => jumpTo(step - 1)} onNext={() => jumpTo(step + 1)} onPlay={() => { if (step >= solution.length) setStep(0); setPlaying(value => !value); }} onReplay={() => { setPlaying(false); setStep(0); }} speed={speed} onSpeed={setSpeed} />
           <div className="steps-heading"><h3>Algorithm</h3><span>{solution.length} moves</span></div><SolutionSteps moves={solution} step={step} mode={mode} onSelect={jumpTo} />
