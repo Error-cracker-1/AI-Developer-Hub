@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   deploy:
+    # Never expose the Vercel token to pull requests originating from a fork.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Deploy Rubiks-cube-solver
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -26,7 +28,7 @@ jobs:
       VERCEL_PROJECT_ID: prj_l4MBEtihoI9vQhawuu8g0sk8YHDQ
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
-      - name: Validate deployment target
+      - name: Validate deployment target and credentials
         shell: bash
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]; then
@@ -60,6 +62,7 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Pull project settings
+        shell: bash
         run: |
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
@@ -68,6 +71,7 @@ jobs:
           fi
 
       - name: Build
+        shell: bash
         run: |
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             vercel build --prod --token="$VERCEL_TOKEN"
