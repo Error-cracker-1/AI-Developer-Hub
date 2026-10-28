@@ -25,7 +25,6 @@ export default function CubeLabExtras() {
   const [records, setRecords] = useState<RecordEntry[]>(readRecords);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [startedAt, setStartedAt] = useState(0);
   const [selectedAlgorithm, setSelectedAlgorithm] = useState(0);
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState(false);
@@ -40,7 +39,7 @@ export default function CubeLabExtras() {
   const filtered = useMemo(() => ALGORITHMS.filter(a => (a.name + ' ' + a.category + ' ' + a.moves).toLowerCase().includes(query.toLowerCase())), [query]);
   const best = records.length ? Math.min(...records.map(r => r.seconds)) : null;
   const average = records.length ? records.reduce((sum, r) => sum + r.seconds, 0) / records.length : null;
-  const start = () => { startedRef.current = performance.now(); setStartedAt(Date.now()); setElapsed(0); setRunning(true); setShowConfirm(false); };
+  const start = () => { startedRef.current = performance.now(); setElapsed(0); setRunning(true); setShowConfirm(false); };
   const stop = () => { const seconds = (performance.now() - startedRef.current) / 1000; setElapsed(seconds); setRunning(false); setRecords(prev => [{ date: new Date().toISOString(), seconds, scramble, moves: scramble.split(/\s+/).filter(Boolean).length }, ...prev].slice(0, 200)); };
   const copy = async (value: string) => { try { await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { setCopied(false); } };
   const newScramble = () => { setScramble(randomScramble(20).join(' ')); setElapsed(0); setRunning(false); setShowConfirm(false); };
