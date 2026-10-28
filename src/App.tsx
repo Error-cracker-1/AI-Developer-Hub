@@ -3,6 +3,7 @@ import CubeCanvas from './components/CubeCanvas';
 import CubeNet from './components/CubeNet';
 import MoveControls from './components/MoveControls';
 import SolutionSteps from './components/SolutionSteps';
+import CubeLabExtras from './components/CubeLabExtras';
 import { applyMoves, Cube, emptyFaces, Face, Facelets, FACE_ORDER, FACE_NAMES, PALETTE, randomScramble, SOLVED, toString, fromString } from './lib/cube';
 import { validateCube } from './lib/validation';
 
@@ -168,6 +169,7 @@ export default function App() {
     <main className="page">
       <section className="hero"><div className="eyebrow">INTERACTIVE CUBE LAB <span>•</span> 3×3</div><h1>Crack the cube.<br/><em>One move at a time.</em></h1><p>Paint your stickers, rotate a real 3D cube, validate the setup, then follow a verified solution.</p><div className="hero-pills"><span>3D INTERACTION</span><span>STEP-BY-STEP</span><span>NO ACCOUNT NEEDED</span></div></section>
       {showHelp && <section className="help-panel"><button className="close-help" onClick={() => setShowHelp(false)}>×</button><h3>How to use TwistLab</h3><ol><li>Drag the 3D cube to rotate it; scroll or pinch to zoom.</li><li>Tap a sticker in the 3D view or the flat net to cycle its color. Center stickers are fixed.</li><li>Each color must appear exactly nine times. A color-count check runs before solving.</li><li>Choose Fast or Guided view, then solve and use the controls to follow the verified algorithm.</li></ol><p>Notation: <b>R</b> is the right face clockwise, <b>R'</b> is counter-clockwise, and <b>R2</b> is a half-turn.</p></section>}
+      <CubeLabExtras />
       <div className="main-grid">
         <section className="panel cube-panel"><div className="panel-heading"><div><span className="step-label">01 / SETUP</span><h2>Your cube</h2></div><div className="cube-heading-actions"><button className="secondary-button fullscreen-trigger" onClick={() => setIsFullscreen(true)} aria-label="Open full-screen 3D cube">⛶ Full screen</button><button className="text-button" onClick={reset}>Reset ↺</button></div></div>
           <div className="cube-status"><span className={solved ? 'state-badge solved' : 'state-badge'}><i />{solved ? 'Solved state' : 'Custom state'}</span><span className="hint">Drag to rotate · tap a sticker to paint</span></div>
