@@ -1278,3 +1278,82 @@ button:disabled {
 .playground-footer-note{margin-top:12px;color:#7e899b;font:10px/1.7 'DM Sans',sans-serif}
 .playground-ai-actions{justify-content:flex-end;margin-top:13px;padding-top:13px;border-top:1px solid #252c36}
 @media(max-width:520px){.playground-panel{padding:12px}.playground-toolbar{align-items:stretch}.playground-actions{width:100%}.playground-actions button{flex:1}.playground-editor{min-height:220px;font-size:11px}.playground-editor-label{display:block}.playground-editor-label span{display:block;margin-top:5px}.playground-preview{height:240px}.playground-ai-actions{justify-content:stretch}.playground-ai-actions button{flex:1;justify-content:center}}
+
+
+/* Session history */
+.history-search {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  margin: 24px 0 14px;
+  border: 1px solid #2a3140;
+  border-radius: 11px;
+  color: #9cebb8;
+  background: #11151e;
+}
+.history-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #edf1f8;
+  background: transparent;
+  font-size: 13px;
+}
+.history-search input::placeholder { color: #737e92; }
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 17px;
+  color: #8590a3;
+  font-size: 11px;
+}
+.history-list { display: grid; gap: 13px; }
+.history-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #272e3c;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #131923, #10141c);
+}
+.history-card-head, .history-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.history-card-head time {
+  color: #7e899c;
+  font: 10px 'DM Mono', monospace;
+}
+.history-card h3 {
+  margin: 15px 0 9px;
+  color: #eef2f8;
+  font: 600 16px 'Space Grotesk', sans-serif;
+  overflow-wrap: anywhere;
+}
+.history-card pre {
+  max-height: 230px;
+  overflow: auto;
+  padding: 13px;
+  border: 1px solid #242b38;
+  border-radius: 8px;
+  color: #c4cedd;
+  background: #0b0e14;
+  font: 11px/1.7 'DM Mono', monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.history-file { color: #8b97aa; font-size: 11px; }
+.history-card-actions { justify-content: flex-start; margin-top: 12px; }
+.history-card-actions .icon-button { margin-left: auto; }
+@media (max-width: 600px) {
+  .history-card { padding: 13px; }
+  .history-toolbar { align-items: flex-start; }
+  .history-card-head { align-items: flex-start; flex-direction: column; }
+  .history-card-actions .icon-button { margin-left: 0; }
+}
