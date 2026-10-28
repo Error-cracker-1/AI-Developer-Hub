@@ -12,6 +12,9 @@ import {
   ShieldCheck,
   Github,
   LoaderCircle,
+  Clock3,
+  Search,
+  Download,
   Plus,
   Paperclip,
   Play,
@@ -32,6 +35,15 @@ type Mode =
   | 'Code Playground'
   | 'README writer'
   | 'Release notes';
+type Session = {
+  id: string;
+  mode: Mode;
+  language: string;
+  task: string;
+  result: string;
+  fileName?: string;
+  createdAt: string;
+};
 type Project = {
   id: string;
   name: string;
@@ -113,6 +125,15 @@ const starterProjects: Project[] = [
   },
 ];
 
+function readSessions(): Session[] {
+  try {
+    const saved = localStorage.getItem('devhub-history-v1');
+    return saved ? (JSON.parse(saved) as Session[]).slice(0, 100) : [];
+  } catch {
+    return [];
+  }
+}
+
 function readProjects(): Project[] {
   try {
     const saved = localStorage.getItem('devhub-projects-v1');
@@ -131,7 +152,9 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [tab, setTab] = useState<'Workspace' | 'Projects'>('Workspace');
+  const [tab, setTab] = useState<'Workspace' | 'Projects' | 'History'>('Workspace');
+  const [sessions, setSessions] = useState<Session[]>(readSessions);
+  const [historyQuery, setHistoryQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>(readProjects);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -146,6 +169,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem('devhub-projects-v1', JSON.stringify(projects));
   }, [projects]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('devhub-history-v1', JSON.stringify(sessions.slice(0, 100)));
+    } catch {
+      setErrorMessage('Browser storage is full. Export or delete old history items to free space.');
+    }
+  }, [sessions]);
 
   useEffect(() => {
     function handlePlaygroundMessage(event: MessageEvent) {
@@ -240,6 +271,15 @@ function App() {
           'The assistant returned an empty response. Please try again.'
         );
       setResult(text);
+      setSessions(current => [{
+        id: crypto.randomUUID(),
+        mode,
+        language,
+        task: task.trim() || (attachedFile ? `Review attached file: ${attachedFile.name}` : ''),
+        result: text,
+        fileName: attachedFile?.name,
+        createdAt: new Date().toISOString(),
+      }, ...current].slice(0, 100));
     } catch (error) {
       const message =
         error instanceof Error
@@ -347,6 +387,13 @@ function App() {
         >
           <FolderGit2 size={17} /> My Projects{' '}
           <span className="nav-count">{projects.length}</span>
+        </button>
+        <button
+          className={tab === 'History' ? 'nav-item active' : 'nav-item'}
+          onClick={() => setTab('History')}
+        >
+          <Clock3 size={17} /> Session History
+          <span className="nav-count">{sessions.length}</span>
         </button>
         <div className="sidebar-bottom">
           <div className="status-card">
@@ -696,7 +743,7 @@ function App() {
               </button>
             </div>
           </div>
-        ) : (
+        ) : tab === 'Projects' ? (
           <div className="content projects-content">
             <div className="projects-heading">
               <div>
@@ -850,6 +897,78 @@ function App() {
                 >
                   <Plus size={16} /> Create a project
                 </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="content projects-content history-content">
+            <div className="projects-heading">
+              <div>
+                <div className="eyebrow"><Clock3 size={14} /> YOUR RECENT WORK</div>
+                <h1>Session <span>History.</span></h1>
+                <p>Search previous AI results, restore a task to the workspace, or export your history. Saved locally in this browser only.</p>
+              </div>
+              <button className="generate-button" onClick={() => {
+                const blob = new Blob([JSON.stringify(sessions, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'devhub-session-history.json';
+                link.click();
+                URL.revokeObjectURL(url);
+              }} disabled={!sessions.length}><Download size={16} /> Export history</button>
+            </div>
+            <label className="history-search">
+              <Search size={17} />
+              <input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Search tasks, results, modes, or languages…" />
+            </label>
+            <div className="history-toolbar">
+              <span>{sessions.length} saved session{sessions.length === 1 ? '' : 's'} · newest first · max 100</span>
+              <button className="secondary-button" disabled={!sessions.length} onClick={() => {
+                if (window.confirm('Delete all saved session history from this browser? This cannot be undone.')) setSessions([]);
+              }}>Clear history</button>
+            </div>
+            {sessions.filter(item => [item.task, item.result, item.mode, item.language, item.fileName || ''].some(value => value.toLowerCase().includes(historyQuery.toLowerCase()))).length ? (
+              <div className="history-list">
+                {sessions.filter(item => [item.task, item.result, item.mode, item.language, item.fileName || ''].some(value => value.toLowerCase().includes(historyQuery.toLowerCase()))).map(item => (
+                  <article className="history-card" key={item.id}>
+                    <div className="history-card-head">
+                      <div><span className="language-tag">{item.mode}</span> <span className="language-tag">{item.language}</span></div>
+                      <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+                    </div>
+                    <h3>{item.task || 'Untitled request'}</h3>
+                    {item.fileName && <p className="history-file">Attached file: {item.fileName} (file contents are not stored in history)</p>}
+                    <pre>{item.result.length > 700 ? item.result.slice(0, 700) + '…' : item.result}</pre>
+                    <div className="history-card-actions">
+                      <button className="copy-button" onClick={() => {
+                        setMode(item.mode);
+                        setLanguage(item.language);
+                        setTask(item.task);
+                        setAttachedFile(null);
+                        setResult('');
+                        setErrorMessage('');
+                        setTab('Workspace');
+                      }}><RotateCcw size={15} /> Restore task</button>
+                      <button className="copy-button" onClick={() => {
+                        const blob = new Blob([item.result], { type: 'text/plain;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `devhub-${item.mode.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-history.txt`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      }}><Download size={15} /> Download result</button>
+                      <button className="icon-button" aria-label="Delete session" onClick={() => setSessions(current => current.filter(session => session.id !== item.id))}><Trash2 size={15} /></button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-projects">
+                <Clock3 size={30} />
+                <h3>{sessions.length ? 'No matching sessions' : 'No saved sessions yet'}</h3>
+                <p>{sessions.length ? 'Try a different search term.' : 'Generate an AI response in the workspace and it will appear here automatically.'}</p>
+                {sessions.length > 0 && <button className="secondary-button" onClick={() => setHistoryQuery('')}>Clear search</button>}
               </div>
             )}
           </div>
