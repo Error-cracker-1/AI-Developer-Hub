@@ -4,10 +4,11 @@ on:
   pull_request:
     branches:
       - deploy-vercel
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - deploy-vercel
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -39,6 +40,10 @@ jobs:
             echo "Refusing to deploy from the wrong branch."
             exit 1
           fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" != "deploy-vercel" ]; then
+            echo "Manual deployments are only allowed from deploy-vercel."
+            exit 1
+          fi
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "Missing repository Actions secret: VERCEL_TOKEN"
             exit 1
@@ -64,7 +69,7 @@ jobs:
       - name: Pull project settings
         shell: bash
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           else
             vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
@@ -73,7 +78,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             vercel build --prod --token="$VERCEL_TOKEN"
           else
             vercel build --token="$VERCEL_TOKEN"
@@ -83,7 +88,7 @@ jobs:
         id: deploy
         shell: bash
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             URL="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
           else
             URL="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
