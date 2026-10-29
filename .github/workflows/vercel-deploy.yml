@@ -1,4 +1,4 @@
-name: Vercel Deploy — Rubiks-cube-solver
+name: Rubik's Cube Solver
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ jobs:
   deploy:
     # Never expose the Vercel token to pull requests originating from a fork.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: Deploy Rubiks-cube-solver
+    name: Deploy Rubik's Cube Solver
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
