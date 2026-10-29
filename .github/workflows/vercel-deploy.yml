@@ -5,23 +5,19 @@ on:
     branches:
       - Rubiks-cube-solver
     types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches:
-      - Rubiks-cube-solver
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: vercel-Rubiks-cube-solver-${{ github.event.pull_request.number || github.ref }}
+  group: vercel-preview-rubiks-cube-solver-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   deploy:
-    # Never expose the Vercel token to pull requests originating from a fork.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: Deploy Rubik's Cube Solver
+    # Do not expose the Vercel token to pull requests from forks.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Preview Deploy — Rubik's Cube Solver
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -32,16 +28,8 @@ jobs:
       - name: Validate deployment target and credentials
         shell: bash
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]; then
+          if [ "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]; then
             echo "Refusing to deploy a pull request targeting the wrong branch."
-            exit 1
-          fi
-          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_NAME" != "Rubiks-cube-solver" ]; then
-            echo "Refusing to deploy from the wrong branch."
-            exit 1
-          fi
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" != "Rubiks-cube-solver" ]; then
-            echo "Manual deployments are only allowed from Rubiks-cube-solver."
             exit 1
           fi
           if [ -z "$VERCEL_TOKEN" ]; then
@@ -49,10 +37,10 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout source
+      - name: Checkout pull request
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -66,32 +54,16 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull project settings
-        shell: bash
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          else
-            vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
-          fi
+      - name: Pull preview settings
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
 
-      - name: Build
-        shell: bash
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            vercel build --prod --token="$VERCEL_TOKEN"
-          else
-            vercel build --token="$VERCEL_TOKEN"
-          fi
+      - name: Build preview
+        run: vercel build --token="$VERCEL_TOKEN"
 
-      - name: Deploy
+      - name: Deploy preview
         id: deploy
         shell: bash
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            URL="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
-          else
-            URL="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
-          fi
+          URL="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "Deployment URL: $URL"
+          echo "Preview deployment URL: $URL"
