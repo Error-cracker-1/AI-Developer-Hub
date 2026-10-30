@@ -196,7 +196,14 @@ export default function App() {
           <div className="history-note"><span>✓</span><div><b>Solution verification</b><p>The solver's output is replayed against the cube state before it is shown.</p></div></div>
         </section>
       </div>
-      <footer><span>TWISTLAB / 3×3 SOLVER</span><span>Cube state stays in this tab · no sign-in</span></footer>
+      <footer>
+        <span>TWISTLAB / 3×3 SOLVER</span>
+        <span>Cube state stays in this tab · no sign-in</span>
+        <span className="footer-links">
+          <a href="https://github.com/Error-cracker-1/AI-Developer-Hub/tree/Rubiks-cube-solver" target="_blank" rel="noreferrer" aria-label="View Rubik's Cube Solver source on GitHub">GitHub repository</a>
+          <a href="https://github.com/Error-cracker-1/AI-Developer-Hub/issues" target="_blank" rel="noreferrer" aria-label="Get support or report an issue">Support</a>
+        </span>
+      </footer>
     </main>
 
       {isFullscreen && <div className="cube-fullscreen" role="dialog" aria-modal="true" aria-label="Full-screen 3D cube and playback controls">
