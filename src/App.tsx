@@ -980,6 +980,10 @@ function App() {
           <span>
             Keep learning. Keep shipping. <Code2 size={14} />
           </span>
+          <span className="footer-links">
+            <a href="https://github.com/Error-cracker-1/AI-Developer-Hub/tree/deploy-vercel" target="_blank" rel="noreferrer" aria-label="View AI Developer Hub source on GitHub">GitHub repository</a>
+            <a href="https://github.com/Error-cracker-1/AI-Developer-Hub/issues" target="_blank" rel="noreferrer" aria-label="Get support or report an issue">Support</a>
+          </span>
         </footer>
       </main>
     </div>
