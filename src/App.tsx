@@ -25,7 +25,7 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/react';
+import { Analytics, track } from '@vercel/analytics/react';
 
 type Mode =
   | 'Generate code'
@@ -270,6 +270,7 @@ function App() {
         throw new Error(
           'The assistant returned an empty response. Please try again.'
         );
+      track('AI generation completed', { mode, language, fileAttached: Boolean(attachedFile) });
       setResult(text);
       setSessions(current => [{
         id: crypto.randomUUID(),
@@ -285,6 +286,7 @@ function App() {
         error instanceof Error
           ? error.message
           : 'Something went wrong. Please try again.';
+      track('AI generation failed', { mode, language, reason: message.includes('429') ? 'rate_limited' : 'request_error' });
       setErrorMessage(
         message.includes('429')
           ? 'The AI service is busy or rate-limited. Wait a moment, then retry.'
