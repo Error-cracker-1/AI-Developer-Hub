@@ -6,7 +6,7 @@ export const defaultFeatureFlags = {
   "cube_history": true,
   "fullscreen_controls": true
 } as const;
-export type FeatureFlagValues = typeof defaultFeatureFlags;
+export type FeatureFlagValues = { [Key in keyof typeof defaultFeatureFlags]: boolean };
 
 /** Fetch public runtime flags. Defaults remain active if the endpoint is unavailable. */
 export async function getFeatureFlags(): Promise<FeatureFlagValues> {
