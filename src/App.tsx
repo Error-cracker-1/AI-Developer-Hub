@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { track } from '@vercel/analytics/react';
 import CubeCanvas from './components/CubeCanvas';
 import CubeNet from './components/CubeNet';
 import MoveControls from './components/MoveControls';
@@ -93,12 +94,12 @@ export default function App() {
     clearSolution();
     setStatus('Change restored.');
   };
-  const reset = () => { setFaces(emptyFaces()); setHistory([]); setRedoHistory([]); clearSolution(); setScramble(''); setError(''); setStatus('Cube reset to solved state.'); };
+  const reset = () => { track('Cube reset'); setFaces(emptyFaces()); setHistory([]); setRedoHistory([]); clearSolution(); setScramble(''); setError(''); setStatus('Cube reset to solved state.'); };
   const scrambleCube = () => {
     const moves = randomScramble();
     const state = applyMoves(SOLVED, moves);
     setFaces(fromString(state)); setScramble(moves.join(' ')); setHistory(items => [...items.slice(-29), toString(faces)]); setRedoHistory([]);
-    clearSolution(); setError(''); setStatus('Scramble generated. Solve it when ready.');
+    clearSolution(); setError(''); setStatus('Scramble generated. Solve it when ready.'); track('Cube scramble generated');
   };
   const solve = async () => {
     setPlaying(false); setError('');
@@ -115,6 +116,7 @@ export default function App() {
       if (checkCube.asString() !== SOLVED) throw new Error('The returned algorithm failed verification. Review the stickers and retry.');
       setStartState(state); setSolution(moves); setStep(0); setAlgorithm(moves.join(' '));
       setStatus(moves.length ? 'Verified solution ready. Follow the highlighted move.' : 'This cube is already solved.');
+       track('Cube solution generated', { moveCount: moves.length, mode });
       setScramble('');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not solve this cube. Check the sticker colors.'); setStatus('Could not calculate a solution.'); }
     finally { setBusy(false); }
