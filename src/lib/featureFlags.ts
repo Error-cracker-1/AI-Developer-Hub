@@ -25,3 +25,15 @@ export async function getFeatureFlags(): Promise<FeatureFlagValues> {
     return { ...defaultFeatureFlags };
   }
 }
+
+import { useEffect, useState } from 'react';
+
+export function useFeatureFlags() {
+  const [flags, setFlags] = useState<FeatureFlagValues>({ ...defaultFeatureFlags });
+  useEffect(() => {
+    let active = true;
+    getFeatureFlags().then((values) => { if (active) setFlags(values); });
+    return () => { active = false; };
+  }, []);
+  return flags;
+}
