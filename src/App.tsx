@@ -25,7 +25,8 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/react';
+import { Analytics, track } from '@vercel/analytics/react';
+import { useFeatureFlags } from './lib/featureFlags';
 
 type Mode =
   | 'Generate code'
@@ -144,6 +145,7 @@ function readProjects(): Project[] {
 }
 
 function App() {
+  const featureFlags = useFeatureFlags();
   const [mode, setMode] = useState<Mode>('Explain code');
   const [language, setLanguage] = useState('Python');
   const [task, setTask] = useState('');
@@ -270,6 +272,7 @@ function App() {
         throw new Error(
           'The assistant returned an empty response. Please try again.'
         );
+      track('AI generation completed', { mode, language, fileAttached: Boolean(attachedFile) });
       setResult(text);
       setSessions(current => [{
         id: crypto.randomUUID(),
@@ -285,6 +288,7 @@ function App() {
         error instanceof Error
           ? error.message
           : 'Something went wrong. Please try again.';
+      track('AI generation failed', { mode, language, reason: message.includes('429') ? 'rate_limited' : 'request_error' });
       setErrorMessage(
         message.includes('429')
           ? 'The AI service is busy or rate-limited. Wait a moment, then retry.'
@@ -512,7 +516,7 @@ function App() {
               </span>
             </div>
             <div className="mode-grid">
-              {modes.map((item, index) => {
+              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -624,10 +628,10 @@ function App() {
                 </div>
               </div>
               <div className="file-upload-row">
-                <label className="attach-file-button">
+                {featureFlags.file_uploads && <label className="attach-file-button">
                   <Paperclip size={16} /> {attachedFile ? "Replace file" : "Attach code file"}
                   <input type="file" accept=".txt,.md,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.less,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.kt,.kts,.c,.h,.cc,.cpp,.hpp,.cs,.go,.rs,.php,.rb,.swift,.sql,.sh,.bash,.ps1,.psm1,.toml,.ini,.vue,.svelte,.astro,.ipynb,.log" onChange={handleFileChange} />
-                </label>
+                </label>}
                 <span className="file-upload-hint">Text/code files up to 100 KB. File contents are sent to Gemini for this request.</span>
                 {attachedFile && (
                   <span className="attached-file">
