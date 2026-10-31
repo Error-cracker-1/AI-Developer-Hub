@@ -6,7 +6,7 @@ export const defaultFeatureFlags = {
   "code_playground": true,
   "release_notes": true
 } as const;
-export type FeatureFlagValues = typeof defaultFeatureFlags;
+export type FeatureFlagValues = { [Key in keyof typeof defaultFeatureFlags]: boolean };
 
 /** Fetch public runtime flags. Defaults remain active if the endpoint is unavailable. */
 export async function getFeatureFlags(): Promise<FeatureFlagValues> {
