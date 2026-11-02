@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ai-developer-hub-ashy.vercel.app/sitemap.xml
