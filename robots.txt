@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rubicscubesolver.vercel.app/sitemap.xml
