@@ -40,6 +40,18 @@ export default function App() {
   const solved = displayedState === SOLVED;
   const currentMove = step < solution.length ? solution[step] : '';
   const progress = solution.length ? Math.round(step / solution.length * 100) : 0;
+  const solverInsights = useMemo(() => {
+    if (!solution.length) return null;
+    const faceCounts: Record<Face, number> = { U: 0, R: 0, F: 0, D: 0, L: 0, B: 0 };
+    let qtm = 0;
+    for (const move of solution) {
+      const face = move[0] as Face;
+      if (FACE_ORDER.includes(face)) faceCounts[face] += 1;
+      qtm += move.endsWith('2') ? 2 : 1;
+    }
+    return { htm: solution.length, qtm, faceCounts };
+  }, [solution]);
+  const estimatedPlaybackSeconds = solution.length * (speed + 300) / 1000;
 
   useEffect(() => {
     if (!playing || step >= solution.length) { if (playing) setPlaying(false); return; }
@@ -197,6 +209,16 @@ export default function App() {
           <MoveControls step={step} total={solution.length} playing={playing} onPrevious={() => jumpTo(step - 1)} onNext={() => jumpTo(step + 1)} onPlay={() => { if (step >= solution.length) setStep(0); setPlaying(value => !value); }} onReplay={() => { setPlaying(false); setStep(0); }} speed={speed} onSpeed={setSpeed} />
           <div className="steps-heading"><h3>Algorithm</h3><span>{solution.length} moves</span></div><SolutionSteps moves={solution} step={step} mode={mode} onSelect={jumpTo} />
           {algorithm && <div className="algorithm-block"><label>FULL ALGORITHM</label><code>{algorithm}</code></div>}
+          {solverInsights && <section className="solver-insights" aria-label="Solution analysis">
+            <div className="solver-insights-heading"><div><span className="current-kicker">ADVANCED SOLVER</span><h3>Solution analysis</h3></div><span className="solver-verified">✓ Verified</span></div>
+            <div className="solver-metrics">
+              <div><span>HTM</span><strong>{solverInsights.htm}</strong><small>Face-turn moves</small></div>
+              <div><span>QTM</span><strong>{solverInsights.qtm}</strong><small>Quarter-turn units</small></div>
+              <div><span>PLAYBACK</span><strong>{Math.floor(estimatedPlaybackSeconds / 60)}:{String(Math.round(estimatedPlaybackSeconds % 60)).padStart(2, '0')}</strong><small>At current speed</small></div>
+            </div>
+            <div className="solver-face-counts"><span>Move distribution</span>{FACE_ORDER.map(face => <span key={face}><b>{face}</b> {solverInsights.faceCounts[face]}</span>)}</div>
+            <p>HTM counts each notation move once; QTM counts a half-turn as two quarter-turns. The estimate reflects your selected playback delay, not physical solving time. The two-phase solver's result is verified against the entered cube state, but is not guaranteed to be the globally shortest solution.</p>
+          </section>}
           <div className="history-note"><span>✓</span><div><b>Solution verification</b><p>The solver's output is replayed against the cube state before it is shown.</p></div></div>
         </section>
       </div>
