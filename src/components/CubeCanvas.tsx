@@ -99,10 +99,13 @@ export default function CubeCanvas({ faces, onSticker, turnKey = '', durationMs 
     };
     build();
     rebuildRef.current = build;
-    let frame = 0;
-    const animate = () => { frame = requestAnimationFrame(animate); renderer.render(scene, camera); };
-    animate();
-    const resize = () => { if (!node.clientWidth || !node.clientHeight) return; camera.aspect = node.clientWidth / node.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(node.clientWidth, node.clientHeight); };
+    let renderFrame = 0;
+    const requestRender = () => {
+      if (renderFrame) return;
+      renderFrame = requestAnimationFrame(() => { renderFrame = 0; renderer.render(scene, camera); });
+    };
+    requestRender();
+    const resize = () => { if (!node.clientWidth || !node.clientHeight) return; camera.aspect = node.clientWidth / node.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(node.clientWidth, node.clientHeight); requestRender(); };
     const observer = new ResizeObserver(resize);
     observer.observe(node);
     const onDown = (event: PointerEvent) => { ctx.dragging = true; ctx.down.set(event.clientX, event.clientY); ctx.previous.copy(ctx.down); renderer.domElement.setPointerCapture(event.pointerId); };
@@ -110,7 +113,7 @@ export default function CubeCanvas({ faces, onSticker, turnKey = '', durationMs 
       if (!ctx.dragging) return;
       const now = new THREE.Vector2(event.clientX, event.clientY);
       const delta = now.clone().sub(ctx.previous);
-      if (ctx.down.distanceTo(now) > 4) root.rotation.y += delta.x * 0.009, root.rotation.x += delta.y * 0.009;
+      if (ctx.down.distanceTo(now) > 4) { root.rotation.y += delta.x * 0.009; root.rotation.x += delta.y * 0.009; requestRender(); }
       ctx.previous.copy(now);
     };
     const onUp = (event: PointerEvent) => {
@@ -123,14 +126,14 @@ export default function CubeCanvas({ faces, onSticker, turnKey = '', durationMs 
       const hit = raycaster.intersectObjects(root.children, false).find(item => item.object.userData.sticker);
       if (hit?.object.userData.sticker) { const sticker = hit.object.userData.sticker as { face: Face; index: number }; callbackRef.current(sticker.face, sticker.index); }
     };
-    const onWheel = (event: WheelEvent) => { camera.position.multiplyScalar(event.deltaY > 0 ? 1.07 : 0.93); camera.position.clampLength(4.3, 11); };
+    const onWheel = (event: WheelEvent) => { camera.position.multiplyScalar(event.deltaY > 0 ? 1.07 : 0.93); camera.position.clampLength(4.3, 11); requestRender(); };
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerup', onUp);
     renderer.domElement.addEventListener('pointercancel', onUp);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: true });
     return () => {
-      cancelAnimationFrame(frame); if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current); observer.disconnect();
+      if (renderFrame) cancelAnimationFrame(renderFrame); if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current); observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onDown); renderer.domElement.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('pointerup', onUp); renderer.domElement.removeEventListener('pointercancel', onUp);
       renderer.domElement.removeEventListener('wheel', onWheel);
@@ -175,6 +178,7 @@ export default function CubeCanvas({ faces, onSticker, turnKey = '', durationMs 
       const eased = raw < 0.5 ? 16 * raw * raw * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 5) / 2;
       pivot.rotation.set(0, 0, 0);
       pivot.rotation[axis] = targetAngle * eased;
+      ctx.renderer.render(ctx.scene, ctx.camera);
       if (raw < 1) {
         animationFrameRef.current = requestAnimationFrame(animateTurn);
         return;
@@ -196,6 +200,7 @@ export default function CubeCanvas({ faces, onSticker, turnKey = '', durationMs 
       // Rebuild from the solver's authoritative facelet state after the visual turn.
       // This keeps sticker indices aligned after each move and avoids visual drift.
       rebuildRef.current?.();
+      ctx.renderer.render(ctx.scene, ctx.camera);
     };
     animationFrameRef.current = requestAnimationFrame(animateTurn);
     return () => { if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current); };
@@ -214,6 +219,7 @@ export default function CubeCanvas({ faces, onSticker, turnKey = '', durationMs 
         (object.material as THREE.MeshStandardMaterial).color.set(PALETTE[faces[data.face][data.index]].color);
       }
     });
+    ctx.renderer.render(ctx.scene, ctx.camera);
   }, [faces]);
 
   return <div className="cube-canvas" ref={host} role="img" aria-label="Interactive 3D Rubik's cube. Drag to rotate, scroll to zoom, tap a sticker to paint." />;
