@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { track } from '@vercel/analytics/react';
 import { useFeatureFlags } from './lib/featureFlags';
-import CubeCanvas from './components/CubeCanvas';
+const CubeCanvas = lazy(() => import('./components/CubeCanvas'));
 import CubeNet from './components/CubeNet';
 import MoveControls from './components/MoveControls';
 import SolutionSteps from './components/SolutionSteps';
@@ -177,7 +177,7 @@ export default function App() {
       <div className="main-grid">
         <section className="panel cube-panel"><div className="panel-heading"><div><span className="step-label">01 / SETUP</span><h2>Your cube</h2></div><div className="cube-heading-actions"><button className="secondary-button fullscreen-trigger" onClick={() => setIsFullscreen(true)} aria-label="Open full-screen 3D cube">⛶ Full screen</button><button className="text-button" onClick={reset}>Reset ↺</button></div></div>
           <div className="cube-status"><span className={solved ? 'state-badge solved' : 'state-badge'}><i />{solved ? 'Solved state' : 'Custom state'}</span><span className="hint">Drag to rotate · tap a sticker to paint</span></div>
-          <CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} />
+          <Suspense fallback={<div className="webgl-fallback" role="status">Loading interactive 3D cube…</div>}><CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} /></Suspense>
           <div className="cube-tools"><button className="secondary-button" onClick={undo} disabled={!history.length}>↶ Undo</button><button className="secondary-button" onClick={redo} disabled={!redoHistory.length}>↷ Redo</button><button className="secondary-button" onClick={fillSolved}>Fill solved</button><button className="secondary-button" onClick={scrambleCube}>⤨ Scramble</button></div>
           <div className="color-legend">{FACE_ORDER.map(face => <button key={face} title={`Select ${PALETTE[face].name} color`} onClick={() => setStatus(`${PALETTE[face].name} is color ${face}. Tap any non-center sticker to cycle colors.`)}><i style={{ background: PALETTE[face].color }} />{PALETTE[face].name}</button>)}</div>
           <h3 className="subheading">Sticker map <span>Tap a tile to cycle colors</span></h3><CubeNet faces={displayedFaces} onSticker={paintSticker} disabled={busy || Boolean(solution.length)} />
@@ -205,7 +205,7 @@ export default function App() {
 
       {isFullscreen && <div className="cube-fullscreen" role="dialog" aria-modal="true" aria-label="Full-screen 3D cube and playback controls">
         <header className="fullscreen-header"><div><span className="step-label">TWISTLAB / IMMERSIVE VIEW</span><h2>3D Cube Playback</h2></div><button className="fullscreen-close" onClick={() => setIsFullscreen(false)} aria-label="Close full-screen view">✕ <span>Exit full screen</span></button></header>
-        <div className="fullscreen-cube-stage"><CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} /></div>
+        <div className="fullscreen-cube-stage"><Suspense fallback={<div className="webgl-fallback" role="status">Loading interactive 3D cube…</div>}><CubeCanvas faces={displayedFaces} onSticker={paintSticker} turnKey={turnKey} durationMs={speed} /></Suspense></div>
         <div className="fullscreen-move-summary"><span className="current-kicker">CURRENT MOVE</span><strong>{currentMove || (solution.length && step === solution.length ? '✓ Solved' : 'Ready to play')}</strong><span>{solution.length ? 'Move ' + Math.min(step + 1, solution.length) + ' of ' + solution.length + ' · ' + progress + '% complete' : 'Solve the cube to enable playback.'}</span></div>
         <div className="fullscreen-controls"><MoveControls step={step} total={solution.length} playing={playing} onPrevious={() => jumpTo(step - 1)} onNext={() => jumpTo(step + 1)} onPlay={() => { if (step >= solution.length) setStep(0); setPlaying(value => !value); }} onReplay={() => { setPlaying(false); setStep(0); }} speed={speed} onSpeed={setSpeed} /></div>
         <p className="fullscreen-hint">Drag the cube to rotate the view · pinch or scroll to zoom · press Esc to exit</p>
