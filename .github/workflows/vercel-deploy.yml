@@ -8,6 +8,9 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
+  deployments: write
 
 concurrency:
   group: vercel-preview-deploy-vercel-${{ github.event.pull_request.number }}
@@ -15,32 +18,44 @@ concurrency:
 
 jobs:
   deploy:
-    # Do not expose the Vercel token to pull requests from forks.
+    # Vercel credentials are never exposed to fork pull requests.
     if: github.event.pull_request.head.repo.full_name == github.repository
     name: Preview Deploy — AI Developer Hub
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       VERCEL_ORG_ID: team_oNbtushdXRxAAyTiw0na2Zpy
       VERCEL_PROJECT_ID: prj_ef4HfCK1KCK2DCnh2k05qrfGrtgV
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+
     steps:
-      - name: Validate deployment target and credentials
+      - name: Validate target branch and Vercel credentials
         shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if [ "${{ github.event.pull_request.base.ref }}" != "deploy-vercel" ]; then
-            echo "Refusing to deploy a pull request targeting the wrong branch."
+          set -euo pipefail
+          if [ "$PR_BASE_REF" != "deploy-vercel" ]; then
+            echo "Refusing to deploy a pull request targeting the wrong production branch."
             exit 1
           fi
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "Missing repository Actions secret: VERCEL_TOKEN"
             exit 1
           fi
+          if [ -z "$PR_HEAD_SHA" ] || [ -z "$PR_HEAD_REF" ]; then
+            echo "Pull request head SHA or branch name is missing."
+            exit 1
+          fi
 
-      - name: Checkout pull request
+      - name: Checkout exact pull request commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,19 +66,205 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@65.11.0
 
-      - name: Pull preview settings
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - name: Pull preview environment for the intended project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=preview
 
-      - name: Build preview
-        run: vercel build --token="$VERCEL_TOKEN"
-
-      - name: Deploy preview
-        id: deploy
+      - name: Assert Vercel project binding
         shell: bash
         run: |
-          URL="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const path = ".vercel/project.json";
+          const linked = JSON.parse(readFileSync(path, "utf8"));
+          const expectedProject = process.env.VERCEL_PROJECT_ID;
+          const expectedOrg = process.env.VERCEL_ORG_ID;
+
+          if (linked.projectId !== expectedProject) {
+            throw new Error(
+              `Wrong Vercel project link: expected ${expectedProject}, got ${linked.projectId ?? "missing"}`
+            );
+          }
+          if (linked.orgId !== expectedOrg) {
+            throw new Error(
+              `Wrong Vercel team link: expected ${expectedOrg}, got ${linked.orgId ?? "missing"}`
+            );
+          }
+          console.log(`Verified Vercel project binding: ${linked.projectId}`);
+          NODE
+
+      - name: Build preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build
+
+      - name: Deploy preview and capture its URL
+        id: deploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(vercel deploy --prebuilt \
+            --meta "githubCommitRef=$PR_HEAD_REF" \
+            --meta "githubCommitSha=$PR_HEAD_SHA" \
+            --meta "githubPrNumber=$PR_NUMBER")"
+
+          PREVIEW_URL="$URL" node --input-type=module <<'NODE'
+          const url = new URL(process.env.PREVIEW_URL);
+          if (url.protocol !== "https:" || !url.hostname.endsWith(".vercel.app")) {
+            throw new Error(`Unexpected Vercel preview URL: ${url.href}`);
+          }
+          console.log(`Validated preview URL: ${url.href}`);
+          NODE
+
           echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "Preview deployment URL: $URL"
+          echo "Preview URL: $URL"
+
+      - name: Smoke-test the deployed preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          test -n "$PREVIEW_URL"
+          vercel curl / --deployment "$PREVIEW_URL" > /dev/null
+          echo "Authenticated preview HTTP smoke test passed."
+
+      - name: Publish preview link and GitHub deployment status
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PROJECT_LABEL: "AI Developer Hub"
+          PROJECT_SLUG: "ai-developer-hub"
+          PROJECT_ID: "prj_ef4HfCK1KCK2DCnh2k05qrfGrtgV"
+          PROJECT_DASHBOARD: "https://vercel.com/error-cracker/ai-developer-hub"
+          PREVIEW_MARKER: "<!-- vercel-preview:ai-developer-hub -->"
+          COMMENT_TITLE: "AI Developer Hub preview"
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const previewUrl = process.env.PREVIEW_URL;
+            const headSha = process.env.PR_HEAD_SHA;
+            const headRef = process.env.PR_HEAD_REF;
+            const projectLabel = process.env.PROJECT_LABEL;
+            const projectSlug = process.env.PROJECT_SLUG;
+            const projectId = process.env.PROJECT_ID;
+            const marker = process.env.PREVIEW_MARKER;
+
+            if (!previewUrl || !headSha || !headRef) {
+              throw new Error("Preview URL or pull-request commit metadata is missing.");
+            }
+
+            const deployment = await github.rest.repos.createDeployment({
+              owner,
+              repo,
+              ref: headSha,
+              task: "deploy",
+              auto_merge: false,
+              required_contexts: [],
+              environment: `preview/${projectSlug}/pr-${prNumber}`,
+              description: `Vercel preview for ${projectLabel}`,
+              transient_environment: true,
+              production_environment: false,
+              payload: {
+                pull_request: prNumber,
+                branch: headRef,
+                vercel_project_id: projectId,
+                preview_url: previewUrl
+              }
+            });
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id: deployment.data.id,
+              state: "success",
+              environment_url: previewUrl,
+              log_url: `${process.env.PROJECT_DASHBOARD}/deployments`,
+              description: "Vercel preview deployed and smoke-tested.",
+              auto_inactive: true
+            });
+
+            const body = [
+              marker,
+              `## ✅ ${process.env.COMMENT_TITLE} deployed`,
+              "",
+              `**[Open preview](${previewUrl})**`,
+              "",
+              `- **Project:** ${projectLabel}`,
+              `- **Branch:** \`${headRef}\``,
+              `- **Commit:** \`${headSha.slice(0, 12)}\``,
+              "- **Status:** READY — deployment completed and authenticated smoke test passed.",
+              "",
+              "_This comment is automatically updated when new commits are pushed to this pull request._"
+            ].join("\n");
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: prNumber, per_page: 100
+            });
+            const existing = comments.find(comment => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body
+              });
+            }
+
+            core.notice(`Preview URL published: ${previewUrl}`);
+
+      - name: Report preview deployment failure
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PROJECT_LABEL: "AI Developer Hub"
+          PREVIEW_MARKER: "<!-- vercel-preview:ai-developer-hub -->"
+          COMMENT_TITLE: "AI Developer Hub preview"
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const marker = process.env.PREVIEW_MARKER;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              `## ❌ ${process.env.COMMENT_TITLE} deployment failed`,
+              "",
+              "The latest commit did not produce a verified preview. Do not merge based on an older preview link.",
+              "",
+              `- **Commit:** \`${process.env.PR_HEAD_SHA.slice(0, 12)}\``,
+              `- **Workflow:** [Open failed run](${runUrl})`,
+              "",
+              "_This notice is automatically replaced by a ready preview when a later run succeeds._"
+            ].join("\n");
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: prNumber, per_page: 100
+            });
+            const existing = comments.find(comment => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body
+              });
+            }
