@@ -3,6 +3,7 @@ name: Rubik's Cube Solver
 on:
   pull_request:
     branches:
+      - rubiks-cube-solver
       - Rubiks-cube-solver
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -28,7 +29,7 @@ jobs:
       - name: Validate deployment target and credentials
         shell: bash
         run: |
-          if [ "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]; then
+          if [[ "${{ github.event.pull_request.base.ref }}" != "rubiks-cube-solver" && "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]]; then
             echo "Refusing to deploy a pull request targeting the wrong branch."
             exit 1
           fi
