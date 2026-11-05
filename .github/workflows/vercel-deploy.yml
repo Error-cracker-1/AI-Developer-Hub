@@ -3,6 +3,7 @@ name: Rubik's Cube Solver
 on:
   pull_request:
     branches:
+      - rubiks-cube-solver
       - Rubiks-cube-solver
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -38,7 +39,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "$PR_BASE_REF" != "Rubiks-cube-solver" ]; then
+          if [[ "$PR_BASE_REF" != "rubiks-cube-solver" && "$PR_BASE_REF" != "Rubiks-cube-solver" ]]; then
             echo "Refusing to deploy a pull request targeting the wrong production branch."
             exit 1
           fi
