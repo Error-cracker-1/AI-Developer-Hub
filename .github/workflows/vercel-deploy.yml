@@ -1,5 +1,7 @@
 name: Deploy Vercel
 
+# Native Vercel preview-isolation verification: AI Hub PRs must deploy only this project.
+
 on:
   pull_request:
     branches:
