@@ -41,8 +41,6 @@ jobs:
           set -euo pipefail
           if [[ "$PR_BASE_REF" != "rubiks-cube-solver" && "$PR_BASE_REF" != "Rubiks-cube-solver" ]]; then
             echo "Refusing to deploy a pull request targeting the wrong production branch."
-          if [[ "${{ github.event.pull_request.base.ref }}" != "rubiks-cube-solver" && "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]]; then
-            echo "Refusing to deploy a pull request targeting the wrong branch."
             exit 1
           fi
           if [ -z "$VERCEL_TOKEN" ]; then
@@ -140,18 +138,20 @@ jobs:
           vercel curl / --deployment "$PREVIEW_URL" > /dev/null
           echo "Authenticated preview HTTP smoke test passed."
 
-      - name: Publish preview link and GitHub deployment status
+      - name: Publish preview links, detailed report, and GitHub deployment status
         uses: actions/github-script@v7
         env:
           PREVIEW_URL: ${{ steps.deploy.outputs.url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PROJECT_LABEL: "TwistLab (Rubik's Cube Solver)"
           PROJECT_SLUG: "twistlab"
           PROJECT_ID: "prj_l4MBEtihoI9vQhawuu8g0sk8YHDQ"
           PROJECT_DASHBOARD: "https://vercel.com/error-cracker/rubics_cube_solver"
           PREVIEW_MARKER: "<!-- vercel-preview:twistlab -->"
+          DETAILS_MARKER: "<!-- vercel-preview-details:twistlab -->"
           COMMENT_TITLE: "TwistLab preview"
         with:
           script: |
@@ -160,13 +160,29 @@ jobs:
             const previewUrl = process.env.PREVIEW_URL;
             const headSha = process.env.PR_HEAD_SHA;
             const headRef = process.env.PR_HEAD_REF;
+            const baseRef = process.env.PR_BASE_REF;
             const projectLabel = process.env.PROJECT_LABEL;
             const projectSlug = process.env.PROJECT_SLUG;
             const projectId = process.env.PROJECT_ID;
-            const marker = process.env.PREVIEW_MARKER;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
 
-            if (!previewUrl || !headSha || !headRef) {
-              throw new Error("Preview URL or pull-request commit metadata is missing.");
+            if (!previewUrl || !headSha || !headRef || !baseRef) {
+              throw new Error("Preview URL or pull-request metadata is missing.");
+            }
+
+            const [prResponse, filesResponse] = await Promise.all([
+              github.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+              github.rest.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 100 })
+            ]);
+            const pr = prResponse.data;
+            const changedFiles = filesResponse.data;
+            const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0);
+            const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0);
+            const fileLines = changedFiles.slice(0, 15).map(file =>
+              `- \`${file.status}\` \`${file.filename}\` (+${file.additions}/-${file.deletions})`
+            );
+            if (changedFiles.length > 15) {
+              fileLines.push(`- …and ${changedFiles.length - 15} more changed files`);
             }
 
             const deployment = await github.rest.repos.createDeployment({
@@ -199,36 +215,69 @@ jobs:
               auto_inactive: true
             });
 
-            const body = [
-              marker,
+            const upsertComment = async (marker, body) => {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner, repo, issue_number: prNumber, per_page: 100
+              });
+              const existing = comments.find(comment => comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: existing.id, body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: prNumber, body
+                });
+              }
+            };
+
+            const previewBody = [
+              process.env.PREVIEW_MARKER,
               `## ✅ ${process.env.COMMENT_TITLE} deployed`,
               "",
               `**[Open preview](${previewUrl})**`,
               "",
               `- **Project:** ${projectLabel}`,
-              `- **Branch:** \`${headRef}\``,
+              `- **PR:** [#${prNumber}](${pr.html_url})`,
+              `- **Branch:** \`${headRef}\` → \`${baseRef}\``,
               `- **Commit:** \`${headSha.slice(0, 12)}\``,
-              "- **Status:** READY — deployment completed and authenticated smoke test passed.",
+              "- **Status:** READY — build, deployment, and authenticated HTTP smoke test passed.",
               "",
-              "_This comment is automatically updated when new commits are pushed to this pull request._"
+              "_Automatically updated when a newer commit is deployed._"
             ].join("\n");
 
-            const { data: comments } = await github.rest.issues.listComments({
-              owner, repo, issue_number: prNumber, per_page: 100
-            });
-            const existing = comments.find(comment => comment.body?.includes(marker));
+            const detailsBody = [
+              process.env.DETAILS_MARKER,
+              "## 📋 Deployment details — TwistLab (Rubik's Cube Solver)",
+              "",
+              "| Detail | Result |",
+              "|---|---|",
+              `| Pull request | [#${prNumber}: ${pr.title}](${pr.html_url}) |`,
+              `| Target branch | \`${baseRef}\` |`,
+              `| Source branch | \`${headRef}\` |`,
+              `| Commit | [${headSha.slice(0, 12)}](https://github.com/${owner}/${repo}/commit/${headSha}) |`,
+              `| Vercel project | ${projectLabel} (\`${projectId}\`) |`,
+              `| Preview URL | [Open deployment](${previewUrl}) |`,
+              `| Build | ✅ Passed (Vercel CLI build) |`,
+              `| Deployment | ✅ Ready |`,
+              `| HTTP smoke test | ✅ Passed (authenticated request to /) |`,
+              `| Changed files | ${changedFiles.length} |`,
+              `| Diff summary | +${additions} / -${deletions} lines |`,
+              `| GitHub deployment ID | \`${deployment.data.id}\` |`,
+              `| Workflow run | [View logs](${runUrl}) |`,
+              `| Vercel dashboard | [View project deployments](${process.env.PROJECT_DASHBOARD}/deployments) |`,
+              "",
+              "### Changed files",
+              ...(fileLines.length ? fileLines : ["- No changed files were returned by the GitHub API."]),
+              "",
+              "> **Verification scope:** This workflow verifies dependency installation, Vercel build, deployment readiness, and an authenticated HTTP smoke test. It does not claim unit, integration, accessibility, or browser end-to-end tests ran unless separate test steps are added.",
+              "",
+              "_This detailed report is updated in place on each successful deployment._"
+            ].join("\n");
 
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner, repo, comment_id: existing.id, body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: prNumber, body
-              });
-            }
-
-            core.notice(`Preview URL published: ${previewUrl}`);
+            await upsertComment(process.env.PREVIEW_MARKER, previewBody);
+            await upsertComment(process.env.DETAILS_MARKER, detailsBody);
+            core.notice(`Preview URL and detailed deployment report published: ${previewUrl}`);
 
       - name: Report preview deployment failure
         if: failure()
@@ -236,38 +285,71 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PROJECT_LABEL: "TwistLab (Rubik's Cube Solver)"
           PREVIEW_MARKER: "<!-- vercel-preview:twistlab -->"
+          DETAILS_MARKER: "<!-- vercel-preview-details:twistlab -->"
           COMMENT_TITLE: "TwistLab preview"
         with:
           script: |
             const { owner, repo } = context.repo;
             const prNumber = Number(process.env.PR_NUMBER);
-            const marker = process.env.PREVIEW_MARKER;
             const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
-            const body = [
-              marker,
+            const headSha = process.env.PR_HEAD_SHA;
+            const headRef = process.env.PR_HEAD_REF;
+            const baseRef = process.env.PR_BASE_REF;
+            const common = [
+              "- **Project:** TwistLab (Rubik's Cube Solver)",
+              `- **PR:** #${prNumber}`,
+              `- **Branch:** \`${headRef}\` → \`${baseRef}\``,
+              `- **Commit:** [${headSha.slice(0, 12)}](https://github.com/${owner}/${repo}/commit/${headSha})`,
+              `- **Workflow run:** [Open logs](${runUrl})`,
+              "- **Result:** ❌ Latest deployment did not complete verification."
+            ];
+            const previewBody = [
+              process.env.PREVIEW_MARKER,
               `## ❌ ${process.env.COMMENT_TITLE} deployment failed`,
               "",
               "The latest commit did not produce a verified preview. Do not merge based on an older preview link.",
               "",
-              `- **Commit:** \`${process.env.PR_HEAD_SHA.slice(0, 12)}\``,
-              `- **Workflow:** [Open failed run](${runUrl})`,
+              ...common,
               "",
               "_This notice is automatically replaced by a ready preview when a later run succeeds._"
+            ].join("\n");
+            const detailsBody = [
+              process.env.DETAILS_MARKER,
+              "## ⚠️ Deployment diagnostic report — TwistLab",
+              "",
+              "The workflow failed before all deployment checks completed. Review the run log to identify the exact failing step.",
+              "",
+              ...common,
+              "",
+              "- **Build:** Not confirmed successful for this commit.",
+              "- **Deployment:** Not confirmed READY for this commit.",
+              "- **HTTP smoke test:** Not confirmed successful for this commit.",
+              "- **Preview URL:** No verified preview URL is published for this run.",
+              "",
+              "> A previous preview may still exist, but it must not be treated as a preview of this commit.",
+              "",
+              "_This diagnostic comment is updated in place after each failed run and replaced with current results after a successful run._"
             ].join("\n");
 
             const { data: comments } = await github.rest.issues.listComments({
               owner, repo, issue_number: prNumber, per_page: 100
             });
-            const existing = comments.find(comment => comment.body?.includes(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner, repo, comment_id: existing.id, body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: prNumber, body
-              });
+            for (const [marker, body] of [
+              [process.env.PREVIEW_MARKER, previewBody],
+              [process.env.DETAILS_MARKER, detailsBody]
+            ]) {
+              const existing = comments.find(comment => comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: existing.id, body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: prNumber, body
+                });
+              }
             }
