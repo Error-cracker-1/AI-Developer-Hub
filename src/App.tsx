@@ -5,6 +5,7 @@ const CubeCanvas = lazy(() => import('./components/CubeCanvas'));
 import CubeNet from './components/CubeNet';
 import MoveControls from './components/MoveControls';
 import SolutionSteps from './components/SolutionSteps';
+import SolutionOptimizer from './components/SolutionOptimizer';
 import CubeLabExtras from './components/CubeLabExtras';
 import { applyMoves, Cube, emptyFaces, Face, Facelets, FACE_ORDER, FACE_NAMES, PALETTE, randomScramble, SOLVED, toString, fromString } from './lib/cube';
 import { validateCube } from './lib/validation';
@@ -197,6 +198,7 @@ export default function App() {
           <MoveControls step={step} total={solution.length} playing={playing} onPrevious={() => jumpTo(step - 1)} onNext={() => jumpTo(step + 1)} onPlay={() => { if (step >= solution.length) setStep(0); setPlaying(value => !value); }} onReplay={() => { setPlaying(false); setStep(0); }} speed={speed} onSpeed={setSpeed} />
           <div className="steps-heading"><h3>Algorithm</h3><span>{solution.length} moves</span></div><SolutionSteps moves={solution} step={step} mode={mode} onSelect={jumpTo} />
           {algorithm && <div className="algorithm-block"><label>FULL ALGORITHM</label><code>{algorithm}</code></div>}
+          {solution.length > 0 && startState && <SolutionOptimizer initialState={startState} moves={solution} />}
           <div className="history-note"><span>✓</span><div><b>Solution verification</b><p>The solver's output is replayed against the cube state before it is shown.</p></div></div>
         </section>
       </div>
