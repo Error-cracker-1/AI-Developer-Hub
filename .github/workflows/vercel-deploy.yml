@@ -244,7 +244,7 @@ jobs:
               "- **Status:** READY — build, deployment, and authenticated HTTP smoke test passed.",
               "",
               "_Automatically updated when a newer commit is deployed._"
-            ].join("\\n");
+            ].join("\n");
 
             const detailsBody = [
               process.env.DETAILS_MARKER,
@@ -273,7 +273,7 @@ jobs:
               "> **Verification scope:** This workflow verifies dependency installation, Vercel build, deployment readiness, and an authenticated HTTP smoke test. It does not claim unit, integration, accessibility, or browser end-to-end tests ran unless separate test steps are added.",
               "",
               "_This detailed report is updated in place on each successful deployment._"
-            ].join("\\n");
+            ].join("\n");
 
             await upsertComment(process.env.PREVIEW_MARKER, previewBody);
             await upsertComment(process.env.DETAILS_MARKER, detailsBody);
@@ -316,7 +316,7 @@ jobs:
               ...common,
               "",
               "_This notice is automatically replaced by a ready preview when a later run succeeds._"
-            ].join("\\n");
+            ].join("\n");
             const detailsBody = [
               process.env.DETAILS_MARKER,
               "## ⚠️ Deployment diagnostic report — TwistLab",
@@ -333,7 +333,7 @@ jobs:
               "> A previous preview may still exist, but it must not be treated as a preview of this commit.",
               "",
               "_This diagnostic comment is updated in place after each failed run and replaced with current results after a successful run._"
-            ].join("\\n");
+            ].join("\n");
 
             const { data: comments } = await github.rest.issues.listComments({
               owner, repo, issue_number: prNumber, per_page: 100
