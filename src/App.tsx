@@ -8,6 +8,7 @@ import {
   Code2,
   Copy,
   FileCode2,
+  FlaskConical,
   FolderGit2,
   ShieldCheck,
   Github,
@@ -33,6 +34,7 @@ type Mode =
   | 'Explain code'
   | 'Debug code'
   | 'AI Code Review'
+  | 'Generate tests'
   | 'Code Playground'
   | 'README writer'
   | 'Release notes';
@@ -72,6 +74,11 @@ const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
     name: 'AI Code Review',
     description: 'Find bugs, risks, and maintainability issues',
     icon: ShieldCheck,
+  },
+  {
+    name: 'Generate tests',
+    description: 'Create framework-aware tests and edge cases',
+    icon: FlaskConical,
   },
   {
     name: 'Code Playground',
@@ -646,7 +653,9 @@ function App() {
                   value={task}
                   onChange={event => setTask(event.target.value)}
                   placeholder={
-                    mode === 'AI Code Review'
+                    mode === 'Generate tests'
+                      ? 'Paste code or attach a file. Mention your test framework (Jest, Vitest, Pytest, JUnit, etc.) or let DevHub recommend one. Include important expected behavior…'
+                      : mode === 'AI Code Review'
                       ? 'Paste code or attach a file. Tell us what to prioritize: correctness, security, performance, edge cases, or maintainability…'
                       : mode === 'Explain code'
                         ? 'Paste your code here, ask a question, or attach a code file above…'
