@@ -15,7 +15,8 @@
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "@vercel/flags-core": "^1.11.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
