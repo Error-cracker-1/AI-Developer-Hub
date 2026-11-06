@@ -67,3 +67,8 @@ jobs:
           URL="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Preview deployment URL: $URL"
+          {
+            echo "## AI Developer Hub preview deployment"
+            echo ""
+            echo "Preview URL: $URL"
+          } >> "$GITHUB_STEP_SUMMARY"
