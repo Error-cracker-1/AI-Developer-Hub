@@ -41,6 +41,8 @@ jobs:
           set -euo pipefail
           if [[ "$PR_BASE_REF" != "rubiks-cube-solver" && "$PR_BASE_REF" != "Rubiks-cube-solver" ]]; then
             echo "Refusing to deploy a pull request targeting the wrong production branch."
+          if [[ "${{ github.event.pull_request.base.ref }}" != "rubiks-cube-solver" && "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]]; then
+            echo "Refusing to deploy a pull request targeting the wrong branch."
             exit 1
           fi
           if [ -z "$VERCEL_TOKEN" ]; then
