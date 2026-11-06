@@ -9,6 +9,9 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
+  deployments: write
 
 concurrency:
   group: vercel-preview-rubiks-cube-solver-${{ github.event.pull_request.number }}
@@ -16,32 +19,44 @@ concurrency:
 
 jobs:
   deploy:
-    # Do not expose the Vercel token to pull requests from forks.
+    # Vercel credentials are never exposed to fork pull requests.
     if: github.event.pull_request.head.repo.full_name == github.repository
     name: Preview Deploy — Rubik's Cube Solver
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       VERCEL_ORG_ID: team_oNbtushdXRxAAyTiw0na2Zpy
       VERCEL_PROJECT_ID: prj_l4MBEtihoI9vQhawuu8g0sk8YHDQ
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+
     steps:
-      - name: Validate deployment target and credentials
+      - name: Validate target branch and Vercel credentials
         shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if [[ "${{ github.event.pull_request.base.ref }}" != "rubiks-cube-solver" && "${{ github.event.pull_request.base.ref }}" != "Rubiks-cube-solver" ]]; then
-            echo "Refusing to deploy a pull request targeting the wrong branch."
+          set -euo pipefail
+          if [[ "$PR_BASE_REF" != "rubiks-cube-solver" && "$PR_BASE_REF" != "Rubiks-cube-solver" ]]; then
+            echo "Refusing to deploy a pull request targeting the wrong production branch."
             exit 1
           fi
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "Missing repository Actions secret: VERCEL_TOKEN"
             exit 1
           fi
+          if [ -z "$PR_HEAD_SHA" ] || [ -z "$PR_HEAD_REF" ]; then
+            echo "Pull request head SHA or branch name is missing."
+            exit 1
+          fi
 
-      - name: Checkout pull request
+      - name: Checkout exact pull request commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -52,19 +67,289 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@65.11.0
 
-      - name: Pull preview settings
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - name: Pull preview environment for the intended project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=preview
 
-      - name: Build preview
-        run: vercel build --token="$VERCEL_TOKEN"
-
-      - name: Deploy preview
-        id: deploy
+      - name: Assert Vercel project binding
         shell: bash
         run: |
-          URL="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const path = ".vercel/project.json";
+          const linked = JSON.parse(readFileSync(path, "utf8"));
+          const expectedProject = process.env.VERCEL_PROJECT_ID;
+          const expectedOrg = process.env.VERCEL_ORG_ID;
+
+          if (linked.projectId !== expectedProject) {
+            throw new Error(
+              `Wrong Vercel project link: expected ${expectedProject}, got ${linked.projectId ?? "missing"}`
+            );
+          }
+          if (linked.orgId !== expectedOrg) {
+            throw new Error(
+              `Wrong Vercel team link: expected ${expectedOrg}, got ${linked.orgId ?? "missing"}`
+            );
+          }
+          console.log(`Verified Vercel project binding: ${linked.projectId}`);
+          NODE
+
+      - name: Build preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build
+
+      - name: Deploy preview and capture its URL
+        id: deploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(vercel deploy --prebuilt \
+            --meta "githubCommitRef=$PR_HEAD_REF" \
+            --meta "githubCommitSha=$PR_HEAD_SHA" \
+            --meta "githubPrNumber=$PR_NUMBER")"
+
+          PREVIEW_URL="$URL" node --input-type=module <<'NODE'
+          const url = new URL(process.env.PREVIEW_URL);
+          if (url.protocol !== "https:" || !url.hostname.endsWith(".vercel.app")) {
+            throw new Error(`Unexpected Vercel preview URL: ${url.href}`);
+          }
+          console.log(`Validated preview URL: ${url.href}`);
+          NODE
+
           echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "Preview deployment URL: $URL"
+          echo "Preview URL: $URL"
+
+      - name: Smoke-test the deployed preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          test -n "$PREVIEW_URL"
+          vercel curl / --deployment "$PREVIEW_URL" > /dev/null
+          echo "Authenticated preview HTTP smoke test passed."
+
+      - name: Publish preview links, detailed report, and GitHub deployment status
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PROJECT_LABEL: "TwistLab (Rubik's Cube Solver)"
+          PROJECT_SLUG: "twistlab"
+          PROJECT_ID: "prj_l4MBEtihoI9vQhawuu8g0sk8YHDQ"
+          PROJECT_DASHBOARD: "https://vercel.com/error-cracker/rubics_cube_solver"
+          PREVIEW_MARKER: "<!-- vercel-preview:twistlab -->"
+          DETAILS_MARKER: "<!-- vercel-preview-details:twistlab -->"
+          COMMENT_TITLE: "TwistLab preview"
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const previewUrl = process.env.PREVIEW_URL;
+            const headSha = process.env.PR_HEAD_SHA;
+            const headRef = process.env.PR_HEAD_REF;
+            const baseRef = process.env.PR_BASE_REF;
+            const projectLabel = process.env.PROJECT_LABEL;
+            const projectSlug = process.env.PROJECT_SLUG;
+            const projectId = process.env.PROJECT_ID;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            if (!previewUrl || !headSha || !headRef || !baseRef) {
+              throw new Error("Preview URL or pull-request metadata is missing.");
+            }
+
+            const [prResponse, filesResponse] = await Promise.all([
+              github.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+              github.rest.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 100 })
+            ]);
+            const pr = prResponse.data;
+            const changedFiles = filesResponse.data;
+            const additions = changedFiles.reduce((sum, file) => sum + file.additions, 0);
+            const deletions = changedFiles.reduce((sum, file) => sum + file.deletions, 0);
+            const fileLines = changedFiles.slice(0, 15).map(file =>
+              `- \`${file.status}\` \`${file.filename}\` (+${file.additions}/-${file.deletions})`
+            );
+            if (changedFiles.length > 15) {
+              fileLines.push(`- …and ${changedFiles.length - 15} more changed files`);
+            }
+
+            const deployment = await github.rest.repos.createDeployment({
+              owner,
+              repo,
+              ref: headSha,
+              task: "deploy",
+              auto_merge: false,
+              required_contexts: [],
+              environment: `preview/${projectSlug}/pr-${prNumber}`,
+              description: `Vercel preview for ${projectLabel}`,
+              transient_environment: true,
+              production_environment: false,
+              payload: {
+                pull_request: prNumber,
+                branch: headRef,
+                vercel_project_id: projectId,
+                preview_url: previewUrl
+              }
+            });
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id: deployment.data.id,
+              state: "success",
+              environment_url: previewUrl,
+              log_url: `${process.env.PROJECT_DASHBOARD}/deployments`,
+              description: "Vercel preview deployed and smoke-tested.",
+              auto_inactive: true
+            });
+
+            const upsertComment = async (marker, body) => {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner, repo, issue_number: prNumber, per_page: 100
+              });
+              const existing = comments.find(comment => comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: existing.id, body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: prNumber, body
+                });
+              }
+            };
+
+            const previewBody = [
+              process.env.PREVIEW_MARKER,
+              `## ✅ ${process.env.COMMENT_TITLE} deployed`,
+              "",
+              `**[Open preview](${previewUrl})**`,
+              "",
+              `- **Project:** ${projectLabel}`,
+              `- **PR:** [#${prNumber}](${pr.html_url})`,
+              `- **Branch:** \`${headRef}\` → \`${baseRef}\``,
+              `- **Commit:** \`${headSha.slice(0, 12)}\``,
+              "- **Status:** READY — build, deployment, and authenticated HTTP smoke test passed.",
+              "",
+              "_Automatically updated when a newer commit is deployed._"
+            ].join("\n");
+
+            const detailsBody = [
+              process.env.DETAILS_MARKER,
+              "## 📋 Deployment details — TwistLab (Rubik's Cube Solver)",
+              "",
+              "| Detail | Result |",
+              "|---|---|",
+              `| Pull request | [#${prNumber}: ${pr.title}](${pr.html_url}) |`,
+              `| Target branch | \`${baseRef}\` |`,
+              `| Source branch | \`${headRef}\` |`,
+              `| Commit | [${headSha.slice(0, 12)}](https://github.com/${owner}/${repo}/commit/${headSha}) |`,
+              `| Vercel project | ${projectLabel} (\`${projectId}\`) |`,
+              `| Preview URL | [Open deployment](${previewUrl}) |`,
+              `| Build | ✅ Passed (Vercel CLI build) |`,
+              `| Deployment | ✅ Ready |`,
+              `| HTTP smoke test | ✅ Passed (authenticated request to /) |`,
+              `| Changed files | ${changedFiles.length} |`,
+              `| Diff summary | +${additions} / -${deletions} lines |`,
+              `| GitHub deployment ID | \`${deployment.data.id}\` |`,
+              `| Workflow run | [View logs](${runUrl}) |`,
+              `| Vercel dashboard | [View project deployments](${process.env.PROJECT_DASHBOARD}/deployments) |`,
+              "",
+              "### Changed files",
+              ...(fileLines.length ? fileLines : ["- No changed files were returned by the GitHub API."]),
+              "",
+              "> **Verification scope:** This workflow verifies dependency installation, Vercel build, deployment readiness, and an authenticated HTTP smoke test. It does not claim unit, integration, accessibility, or browser end-to-end tests ran unless separate test steps are added.",
+              "",
+              "_This detailed report is updated in place on each successful deployment._"
+            ].join("\n");
+
+            await upsertComment(process.env.PREVIEW_MARKER, previewBody);
+            await upsertComment(process.env.DETAILS_MARKER, detailsBody);
+            core.notice(`Preview URL and detailed deployment report published: ${previewUrl}`);
+
+      - name: Report preview deployment failure
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PROJECT_LABEL: "TwistLab (Rubik's Cube Solver)"
+          PREVIEW_MARKER: "<!-- vercel-preview:twistlab -->"
+          DETAILS_MARKER: "<!-- vercel-preview-details:twistlab -->"
+          COMMENT_TITLE: "TwistLab preview"
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const headSha = process.env.PR_HEAD_SHA;
+            const headRef = process.env.PR_HEAD_REF;
+            const baseRef = process.env.PR_BASE_REF;
+            const common = [
+              "- **Project:** TwistLab (Rubik's Cube Solver)",
+              `- **PR:** #${prNumber}`,
+              `- **Branch:** \`${headRef}\` → \`${baseRef}\``,
+              `- **Commit:** [${headSha.slice(0, 12)}](https://github.com/${owner}/${repo}/commit/${headSha})`,
+              `- **Workflow run:** [Open logs](${runUrl})`,
+              "- **Result:** ❌ Latest deployment did not complete verification."
+            ];
+            const previewBody = [
+              process.env.PREVIEW_MARKER,
+              `## ❌ ${process.env.COMMENT_TITLE} deployment failed`,
+              "",
+              "The latest commit did not produce a verified preview. Do not merge based on an older preview link.",
+              "",
+              ...common,
+              "",
+              "_This notice is automatically replaced by a ready preview when a later run succeeds._"
+            ].join("\n");
+            const detailsBody = [
+              process.env.DETAILS_MARKER,
+              "## ⚠️ Deployment diagnostic report — TwistLab",
+              "",
+              "The workflow failed before all deployment checks completed. Review the run log to identify the exact failing step.",
+              "",
+              ...common,
+              "",
+              "- **Build:** Not confirmed successful for this commit.",
+              "- **Deployment:** Not confirmed READY for this commit.",
+              "- **HTTP smoke test:** Not confirmed successful for this commit.",
+              "- **Preview URL:** No verified preview URL is published for this run.",
+              "",
+              "> A previous preview may still exist, but it must not be treated as a preview of this commit.",
+              "",
+              "_This diagnostic comment is updated in place after each failed run and replaced with current results after a successful run._"
+            ].join("\n");
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: prNumber, per_page: 100
+            });
+            for (const [marker, body] of [
+              [process.env.PREVIEW_MARKER, previewBody],
+              [process.env.DETAILS_MARKER, detailsBody]
+            ]) {
+              const existing = comments.find(comment => comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: existing.id, body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: prNumber, body
+                });
+              }
+            }
