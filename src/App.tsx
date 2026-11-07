@@ -147,22 +147,53 @@ export default function App() {
   const scanFaceNow = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) { setCameraError('Wait until the camera preview is ready, then capture again.'); return; }
-    const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d'); if (!context) { setCameraError('Could not read this camera frame.'); return; }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // The preview is a square object-fit:cover window. Sample the same centered square
+    // from the source frame so the nine detection cells line up with the on-screen guide.
+    const side = Math.min(video.videoWidth, video.videoHeight);
+    const sx = (video.videoWidth - side) / 2;
+    const sy = (video.videoHeight - side) / 2;
+    const canvas = document.createElement('canvas'); canvas.width = 360; canvas.height = 360;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) { setCameraError('Could not read this camera frame.'); return; }
+    context.drawImage(video, sx, sy, side, side, 0, 0, 360, 360);
+    const toLab = (r: number, g: number, b: number) => {
+      const linear = (v: number) => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+      const R = linear(r), G = linear(g), B = linear(b);
+      let x = (R * .4124 + G * .3576 + B * .1805) / .95047;
+      let y = R * .2126 + G * .7152 + B * .0722;
+      let z = (R * .0193 + G * .1192 + B * .9505) / 1.08883;
+      const f = (v: number) => v > .008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116;
+      x = f(x); y = f(y); z = f(z);
+      return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+    };
+    const targets = FACE_ORDER.map(face => {
+      const hex = PALETTE[face].color.slice(1);
+      return { face, lab: toLab(parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)) };
+    });
     const samples: Face[] = [];
+    let uncertain = 0;
     for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
-      const px = Math.min(canvas.width - 1, Math.round(canvas.width * (0.25 + col * 0.25)));
-      const py = Math.min(canvas.height - 1, Math.round(canvas.height * (0.25 + row * 0.25)));
-      const rgb = context.getImageData(px, py, 1, 1).data;
-      let best: Face = 'U', distance = Infinity;
-      FACE_ORDER.forEach(face => { const hex = PALETTE[face].color.replace('#', ''); const target = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)); const d = Math.sqrt((rgb[0]-target[0])**2+(rgb[1]-target[1])**2+(rgb[2]-target[2])**2); if (d < distance) { distance = d; best = face; } });
-      samples.push(best);
+      // Ignore sticker borders and specular highlights: use the median of a small
+      // 7x7 patch around each cell center rather than one pixel.
+      const cx = Math.round(360 * (.17 + col * .33));
+      const cy = Math.round(360 * (.17 + row * .33));
+      const channels: number[][] = [[], [], []];
+      for (let dy = -9; dy <= 9; dy += 3) for (let dx = -9; dx <= 9; dx += 3) {
+        const pixel = context.getImageData(Math.max(0, Math.min(359, cx + dx)), Math.max(0, Math.min(359, cy + dy)), 1, 1).data;
+        channels.forEach((channel, index) => channel.push(pixel[index]));
+      }
+      const median = (values: number[]) => values.sort((x, y) => x - y)[Math.floor(values.length / 2)];
+      const lab = toLab(median(channels[0]), median(channels[1]), median(channels[2]));
+      const ranked = targets.map(target => ({ face: target.face, distance: Math.hypot(lab[0]-target.lab[0], lab[1]-target.lab[1], lab[2]-target.lab[2]) })).sort((x,y) => x.distance-y.distance);
+      if (ranked[0].distance > 32 || ranked[1].distance - ranked[0].distance < 5) uncertain++;
+      samples.push(ranked[0].face);
     }
     samples[4] = scanFace;
     setHistory(items => [...items.slice(-29), toString(faces)]); clearSolution();
     setFaces(previous => ({ ...previous, [scanFace]: samples }));
-    setCameraError('Face colors copied. This simple color sampler is lighting-sensitive; inspect all nine stickers before solving.');
+    setCameraError(uncertain
+      ? `Captured with ${uncertain} low-confidence sticker(s). Improve lighting, avoid glare, keep one face centered inside the square guide, then correct any wrong colors in the sticker map.`
+      : 'Face captured. Review the nine detected stickers in the sticker map before solving.');
   };
   const fillSolved = () => { setHistory(items => [...items.slice(-29), toString(faces)]); setFaces(emptyFaces()); clearSolution(); setError(''); setStatus('Solved color layout restored.'); };
   const copyAlgorithm = async () => { try { await navigator.clipboard.writeText(algorithm); setStatus('Algorithm copied to clipboard.'); } catch { setStatus('Select and copy the algorithm shown below.'); } };
