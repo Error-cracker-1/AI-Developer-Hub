@@ -12,6 +12,7 @@ const defaults = {
   file_uploads: true,
   code_playground: true,
   release_notes: true,
+  project_history: true,
 } as const;
 
 const vercelKeys = {
@@ -19,6 +20,7 @@ const vercelKeys = {
   file_uploads: 'file-uploads',
   code_playground: 'code-playground',
   release_notes: 'release-notes',
+  project_history: 'project-history',
 } as const;
 
 type FlagKey = keyof typeof defaults;
