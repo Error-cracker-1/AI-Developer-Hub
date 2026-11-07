@@ -988,7 +988,7 @@ function App() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
         <footer className="footer">
           <span>
             DEVHUB <b>•</b> BUILT FOR BUILDERS
