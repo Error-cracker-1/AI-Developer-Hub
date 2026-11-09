@@ -163,8 +163,9 @@ function App() {
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'Workspace' | 'Projects' | 'History'>('Workspace');
   useEffect(() => {
-    if (!featureFlags.project_history && tab === 'History') setTab('Workspace');
-  }, [featureFlags.project_history, tab]);
+    if (!featureFlags.session_history && tab === 'History') setTab('Workspace');
+    if (!featureFlags.projects_tab && tab === 'Projects') setTab('Workspace');
+  }, [featureFlags.session_history, featureFlags.projects_tab, tab]);
   const [sessions, setSessions] = useState<Session[]>(readSessions);
   const [historyQuery, setHistoryQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>(readProjects);
@@ -402,7 +403,7 @@ function App() {
           <FolderGit2 size={17} /> My Projects{' '}
           <span className="nav-count">{projects.length}</span>
         </button>
-        {featureFlags.project_history && <button
+        {featureFlags.session_history && <button
           className={tab === 'History' ? 'nav-item active' : 'nav-item'}
           onClick={() => setTab('History')}
         >
@@ -916,7 +917,7 @@ function App() {
               </div>
             )}
           </div>
-        ) : tab === 'History' && featureFlags.project_history ? (
+        ) : tab === 'History' && featureFlags.session_history ? (
           <div className="content projects-content history-content">
             <div className="projects-heading">
               <div>
