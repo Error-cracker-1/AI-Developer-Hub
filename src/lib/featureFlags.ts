@@ -3,7 +3,8 @@ export const defaultFeatureFlags = {
   file_uploads: true,
   code_playground: true,
   release_notes: true,
-  project_history: false,
+  session_history: false,
+  projects_tab: true,
 } as const;
 
 export type FeatureFlagValues = {
