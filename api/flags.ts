@@ -12,7 +12,7 @@ const defaults = {
   file_uploads: true,
   code_playground: true,
   release_notes: true,
-  project_history: true,
+  project_history: process.env.VERCEL_ENV !== 'production',
 } as const;
 
 const vercelKeys = {
