@@ -1389,3 +1389,19 @@ button:disabled {
 .project-detail-panel .project-progress-track{margin-top:5px}
 .project-detail-side .project-detail-panel{margin-top:0}
 @media(max-width:760px){.project-toolbar{grid-template-columns:1fr 1fr}.project-toolbar .history-search{grid-column:1/-1}.project-detail-grid{grid-template-columns:1fr}.project-detail-side{order:-1}.project-task-add .generate-button{padding:0 10px}}
+
+
+/* AI Project Assistant */
+.project-ai-panel .project-panel-heading h2{display:flex;align-items:center;gap:8px}
+.project-ai-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}
+.project-ai-action{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;padding:10px 7px;border:1px solid #303847;border-radius:8px;background:#151c26;color:#b9c5d4;font:600 10px 'DM Sans',sans-serif;cursor:pointer}
+.project-ai-action.active{border-color:#6eaf89;background:#17281f;color:#a8edc1}
+.project-ai-action:disabled{opacity:.55;cursor:wait}
+.project-ai-loading{display:flex;align-items:center;gap:8px;margin-top:14px;color:#a5efbd;font-size:12px}
+.project-ai-loading svg{animation:project-ai-spin 1s linear infinite}
+@keyframes project-ai-spin{to{transform:rotate(360deg)}}
+.project-ai-error{margin-top:12px;color:#ff9b9b;font-size:12px}
+.project-ai-result{margin-top:14px;padding:14px;border:1px solid #354638;border-radius:9px;background:#101a16}
+.project-ai-result-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#a5efbd;font-size:12px}
+.project-ai-result pre{max-height:420px;overflow:auto;margin:10px 0 0;color:#d8e3dc;font:12px/1.65 'DM Sans',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:520px){.project-ai-actions{grid-template-columns:1fr}.project-ai-action{justify-content:flex-start;padding:11px}}
