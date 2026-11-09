@@ -47,12 +47,19 @@ type Session = {
   fileName?: string;
   createdAt: string;
 };
+type ProjectTask = { id: string; title: string; done: boolean };
 type Project = {
   id: string;
   name: string;
   language: string;
   status: string;
   notes: string;
+  progress?: number;
+  priority?: 'Low' | 'Medium' | 'High';
+  dueDate?: string;
+  tags?: string[];
+  tasks?: ProjectTask[];
+  updatedAt?: string;
 };
 const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
   {
@@ -145,7 +152,15 @@ function readSessions(): Session[] {
 function readProjects(): Project[] {
   try {
     const saved = localStorage.getItem('devhub-projects-v1');
-    return saved ? (JSON.parse(saved) as Project[]) : starterProjects;
+    return saved ? (JSON.parse(saved) as Project[]).map(project => ({
+      ...project,
+      progress: typeof project.progress === 'number' ? project.progress : (project.status === 'Done' ? 100 : 0),
+      priority: project.priority || 'Medium',
+      dueDate: project.dueDate || '',
+      tags: Array.isArray(project.tags) ? project.tags : [],
+      tasks: Array.isArray(project.tasks) ? project.tasks : [],
+      updatedAt: project.updatedAt || new Date().toISOString(),
+    })) : starterProjects.map(project => ({ ...project, progress: 0, priority: 'Medium' as const, dueDate: '', tags: [], tasks: [], updatedAt: new Date().toISOString() }));
   } catch {
     return starterProjects;
   }
@@ -173,6 +188,14 @@ function App() {
   const [projectName, setProjectName] = useState('');
   const [projectLanguage, setProjectLanguage] = useState('Python');
   const [projectNotes, setProjectNotes] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectStatusFilter, setProjectStatusFilter] = useState('All');
+  const [projectLanguageFilter, setProjectLanguageFilter] = useState('All');
+  const [projectSort, setProjectSort] = useState('updated');
+  const [projectPriority, setProjectPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [projectDueDate, setProjectDueDate] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
   const [playgroundLanguage, setPlaygroundLanguage] = useState<'JavaScript' | 'HTML/CSS'>('JavaScript');
   const [playgroundCode, setPlaygroundCode] = useState("console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));");
   const [playgroundOutput, setPlaygroundOutput] = useState('Run your code to see console output here.');
@@ -358,19 +381,51 @@ function App() {
   function addProject(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!projectName.trim()) return;
-    setProjects(current => [
-      {
-        id: crypto.randomUUID(),
-        name: projectName.trim(),
-        language: projectLanguage,
-        status: 'Planned',
-        notes: projectNotes.trim(),
-      },
-      ...current,
-    ]);
+    setProjects(current => [{
+      id: crypto.randomUUID(),
+      name: projectName.trim(),
+      language: projectLanguage,
+      status: 'Planned',
+      notes: projectNotes.trim(),
+      progress: 0,
+      priority: projectPriority,
+      dueDate: projectDueDate,
+      tags: [],
+      tasks: [],
+      updatedAt: new Date().toISOString(),
+    }, ...current]);
     setProjectName('');
     setProjectNotes('');
+    setProjectPriority('Medium');
+    setProjectDueDate('');
     setShowProjectForm(false);
+  }
+
+  const selectedProject = projects.find(project => project.id === selectedProjectId) || null;
+  const filteredProjects = projects.filter(project => {
+    const query = projectSearch.trim().toLowerCase();
+    const matchesQuery = !query || [project.name, project.language, project.notes, ...(project.tags || [])].some(value => value.toLowerCase().includes(query));
+    return matchesQuery && (projectStatusFilter === 'All' || project.status === projectStatusFilter) && (projectLanguageFilter === 'All' || project.language === projectLanguageFilter);
+  }).sort((a, b) => projectSort === 'name' ? a.name.localeCompare(b.name) : projectSort === 'due' ? (a.dueDate || '9999').localeCompare(b.dueDate || '9999') : new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+
+  function updateProject(projectId: string, patch: Partial<Project>) {
+    setProjects(current => current.map(project => project.id === projectId ? { ...project, ...patch, updatedAt: new Date().toISOString() } : project));
+  }
+
+  function addProjectTask(projectId: string) {
+    if (!newTaskTitle.trim()) return;
+    const project = projects.find(item => item.id === projectId);
+    if (!project) return;
+    updateProject(projectId, { tasks: [...(project.tasks || []), { id: crypto.randomUUID(), title: newTaskTitle.trim(), done: false }] });
+    setNewTaskTitle('');
+  }
+
+  function toggleProjectTask(projectId: string, taskId: string) {
+    const project = projects.find(item => item.id === projectId);
+    if (!project) return;
+    const tasks = (project.tasks || []).map(task => task.id === taskId ? { ...task, done: !task.done } : task);
+    const progress = tasks.length ? Math.round(tasks.filter(task => task.done).length / tasks.length * 100) : project.progress || 0;
+    updateProject(projectId, { tasks, progress, status: progress === 100 && tasks.length ? 'Done' : project.status === 'Done' ? 'In progress' : project.status });
   }
 
   return (
@@ -762,160 +817,45 @@ function App() {
           </div>
         ) : tab === 'Projects' ? (
           <div className="content projects-content">
-            <div className="projects-heading">
-              <div>
-                <div className="eyebrow">
-                  <FolderGit2 size={14} /> YOUR WORK, ORGANIZED
+            {selectedProject ? (
+              <section className="project-detail">
+                <button className="secondary-button" onClick={() => setSelectedProjectId(null)}>← All projects</button>
+                <div className="projects-heading">
+                  <div><div className="eyebrow"><FolderGit2 size={14} /> PROJECT WORKSPACE</div><h1>{selectedProject.name}</h1><p>{selectedProject.language} · Updated {new Date(selectedProject.updatedAt || Date.now()).toLocaleDateString()}</p></div>
+                  <span className="priority-pill">{selectedProject.priority || 'Medium'} priority</span>
                 </div>
-                <h1>
-                  My <span>Projects.</span>
-                </h1>
-                <p>
-                  Keep your ideas, stacks, and next steps in one place. Projects
-                  are saved in this browser.
-                </p>
-              </div>
-              <button
-                className="generate-button"
-                onClick={() => setShowProjectForm(value => !value)}
-              >
-                <Plus size={17} /> New project
-              </button>
-            </div>
-            {showProjectForm && (
-              <form className="project-form" onSubmit={addProject}>
-                <div className="form-grid">
-                  <label className="field-label">
-                    PROJECT NAME
-                    <input
-                      value={projectName}
-                      onChange={event => setProjectName(event.target.value)}
-                      placeholder="e.g. Portfolio website"
-                      required
-                    />
-                  </label>
-                  <label className="field-label">
-                    LANGUAGE / STACK
-                    <select
-                      value={projectLanguage}
-                      onChange={event => setProjectLanguage(event.target.value)}
-                    >
-                      {languages.map(item => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="field-label">
-                  NOTES
-                  <textarea
-                    value={projectNotes}
-                    onChange={event => setProjectNotes(event.target.value)}
-                    placeholder="What are you building next?"
-                    rows={3}
-                  />
-                </label>
-                <div className="form-actions">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setShowProjectForm(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button className="generate-button" type="submit">
-                    <Plus size={16} /> Save project
-                  </button>
-                </div>
-              </form>
-            )}
-            <div className="project-summary">
-              <div>
-                <span>Total projects</span>
-                <strong>{projects.length}</strong>
-              </div>
-              <div>
-                <span>In progress</span>
-                <strong>
-                  {
-                    projects.filter(project => project.status === 'In progress')
-                      .length
-                  }
-                </strong>
-              </div>
-              <div>
-                <span>Planned</span>
-                <strong>
-                  {
-                    projects.filter(project => project.status === 'Planned')
-                      .length
-                  }
-                </strong>
-              </div>
-            </div>
-            {projects.length ? (
-              <div className="project-grid">
-                {projects.map(project => (
-                  <article className="project-card" key={project.id}>
-                    <div className="project-card-top">
-                      <span className="project-symbol">
-                        <Code2 size={20} />
-                      </span>
-                      <button
-                        className="icon-button"
-                        onClick={() =>
-                          setProjects(current =>
-                            current.filter(item => item.id !== project.id)
-                          )
-                        }
-                        aria-label={'Delete ' + project.name}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                <div className="project-detail-grid">
+                  <div className="project-detail-main">
+                    <label className="field-label">PROJECT NOTES<textarea value={selectedProject.notes} onChange={event => updateProject(selectedProject.id, { notes: event.target.value })} rows={5} placeholder="Project goals, decisions, and next steps…" /></label>
+                    <div className="project-detail-panel">
+                      <div className="project-panel-heading"><h2>Tasks & milestones</h2><span>{(selectedProject.tasks || []).filter(task => task.done).length}/{(selectedProject.tasks || []).length} complete</span></div>
+                      <form className="project-task-add" onSubmit={event => { event.preventDefault(); addProjectTask(selectedProject.id); }}><input value={newTaskTitle} onChange={event => setNewTaskTitle(event.target.value)} placeholder="Add a task or milestone…" aria-label="New project task" /><button className="generate-button" type="submit"><Plus size={15}/> Add</button></form>
+                      {(selectedProject.tasks || []).length ? <div className="project-task-list">{(selectedProject.tasks || []).map(task => <label key={task.id}><input type="checkbox" checked={task.done} onChange={() => toggleProjectTask(selectedProject.id, task.id)} /><span className={task.done ? 'task-done' : ''}>{task.title}</span></label>)}</div> : <p className="project-muted">Add tasks to track project progress. Progress updates automatically as tasks are completed.</p>}
                     </div>
-                    <h3>{project.name}</h3>
-                    <p>
-                      {project.notes ||
-                        'No notes added yet. Add details to remember your next steps.'}
-                    </p>
-                    <div className="project-card-bottom">
-                      <span className="language-tag">{project.language}</span>
-                      <label className="status-select">
-                        <select
-                          aria-label={'Status for ' + project.name}
-                          value={project.status}
-                          onChange={event =>
-                            setProjects(current =>
-                              current.map(item =>
-                                item.id === project.id
-                                  ? { ...item, status: event.target.value }
-                                  : item
-                              )
-                            )
-                          }
-                        >
-                          <option>Planned</option>
-                          <option>In progress</option>
-                          <option>Done</option>
-                        </select>
-                      </label>
+                  </div>
+                  <aside className="project-detail-side">
+                    <div className="project-detail-panel"><h2>Project overview</h2>
+                      <label className="field-label">STATUS<select value={selectedProject.status} onChange={event => updateProject(selectedProject.id, { status: event.target.value, progress: event.target.value === 'Done' ? 100 : selectedProject.progress })}><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select></label>
+                      <label className="field-label">PRIORITY<select value={selectedProject.priority || 'Medium'} onChange={event => updateProject(selectedProject.id, { priority: event.target.value as Project['priority'] })}><option>Low</option><option>Medium</option><option>High</option></select></label>
+                      <label className="field-label">DUE DATE<input type="date" value={selectedProject.dueDate || ''} onChange={event => updateProject(selectedProject.id, { dueDate: event.target.value })}/></label>
+                      <label className="field-label">PROGRESS · {selectedProject.progress || 0}%<input type="range" min="0" max="100" step="5" value={selectedProject.progress || 0} onChange={event => updateProject(selectedProject.id, { progress: Number(event.target.value), status: Number(event.target.value) === 100 ? 'Done' : selectedProject.status === 'Done' ? 'In progress' : selectedProject.status })}/></label>
+                      <div className="project-progress-track"><span style={{width: (selectedProject.progress || 0) + '%'}}/></div>
                     </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-projects">
-                <FolderGit2 size={30} />
-                <h3>No projects yet</h3>
-                <p>Add a project to start organizing your work.</p>
-                <button
-                  className="generate-button"
-                  onClick={() => setShowProjectForm(true)}
-                >
-                  <Plus size={16} /> Create a project
-                </button>
-              </div>
-            )}
+                  </aside>
+                </div>
+              </section>
+            ) : <>
+              <div className="projects-heading"><div><div className="eyebrow"><FolderGit2 size={14}/> YOUR WORK, ORGANIZED</div><h1>My <span>Projects.</span></h1><p>Plan, organize, and track your development work. Project data is saved locally in this browser.</p></div><button className="generate-button" onClick={() => setShowProjectForm(value => !value)}><Plus size={17}/> New project</button></div>
+              {showProjectForm && <form className="project-form" onSubmit={addProject}>
+                <div className="form-grid"><label className="field-label">PROJECT NAME<input value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="e.g. Portfolio website" required/></label><label className="field-label">LANGUAGE / STACK<select value={projectLanguage} onChange={event => setProjectLanguage(event.target.value)}>{languages.map(item => <option key={item}>{item}</option>)}</select></label></div>
+                <div className="form-grid"><label className="field-label">PRIORITY<select value={projectPriority} onChange={event => setProjectPriority(event.target.value as 'Low' | 'Medium' | 'High')}><option>Low</option><option>Medium</option><option>High</option></select></label><label className="field-label">DUE DATE<input type="date" value={projectDueDate} onChange={event => setProjectDueDate(event.target.value)}/></label></div>
+                <label className="field-label">NOTES<textarea value={projectNotes} onChange={event => setProjectNotes(event.target.value)} placeholder="What are you building next?" rows={3}/></label>
+                <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setShowProjectForm(false)}>Cancel</button><button className="generate-button" type="submit"><Plus size={16}/> Save project</button></div>
+              </form>}
+              <div className="project-summary"><div><span>Total projects</span><strong>{projects.length}</strong></div><div><span>In progress</span><strong>{projects.filter(project => project.status === 'In progress').length}</strong></div><div><span>Completed</span><strong>{projects.filter(project => project.status === 'Done').length}</strong></div></div>
+              <div className="project-toolbar"><label className="history-search"><Search size={17}/><input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects, stacks, notes…"/></label><select aria-label="Filter by status" value={projectStatusFilter} onChange={event => setProjectStatusFilter(event.target.value)}><option>All</option><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select><select aria-label="Filter by language" value={projectLanguageFilter} onChange={event => setProjectLanguageFilter(event.target.value)}><option>All</option>{Array.from(new Set(projects.map(project => project.language))).map(language => <option key={language}>{language}</option>)}</select><select aria-label="Sort projects" value={projectSort} onChange={event => setProjectSort(event.target.value)}><option value="updated">Recently updated</option><option value="name">Name A–Z</option><option value="due">Due date</option></select></div>
+              {filteredProjects.length ? <div className="project-grid">{filteredProjects.map(project => <article className="project-card" key={project.id}><div className="project-card-top"><span className="project-symbol"><Code2 size={20}/></span><button className="icon-button" onClick={() => { if(window.confirm('Delete '+project.name+'? This cannot be undone.')) setProjects(current => current.filter(item => item.id !== project.id)); }} aria-label={'Delete '+project.name}><Trash2 size={16}/></button></div><h3>{project.name}</h3><p>{project.notes || 'No notes added yet. Open the project to add details and tasks.'}</p><div className="project-card-meta"><span className="language-tag">{project.language}</span><span className="priority-pill">{project.priority || 'Medium'}</span>{project.dueDate && <span className="project-due">Due {new Date(project.dueDate+'T00:00:00').toLocaleDateString()}</span>}</div><div className="project-progress-track"><span style={{width:(project.progress || 0)+'%'}}/></div><div className="project-card-bottom"><span className="project-progress-label">{project.progress || 0}% complete · {(project.tasks || []).filter(task => task.done).length}/{(project.tasks || []).length} tasks</span><button className="copy-button" onClick={() => setSelectedProjectId(project.id)}>Open project <ArrowUpRight size={14}/></button></div><div className="project-card-status"><select aria-label={'Status for '+project.name} value={project.status} onChange={event => updateProject(project.id, {status:event.target.value, progress:event.target.value === 'Done' ? 100 : project.progress})}><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select></div></article>)}</div> : <div className="empty-projects"><FolderGit2 size={30}/><h3>{projects.length ? 'No matching projects' : 'No projects yet'}</h3><p>{projects.length ? 'Try changing your search or filters.' : 'Add a project to start organizing your work.'}</p>{!projects.length && <button className="generate-button" onClick={() => setShowProjectForm(true)}><Plus size={16}/> Create a project</button>}</div>}
+            </>}
           </div>
         ) : tab === 'History' && featureFlags.session_history ? (
           <div className="content projects-content history-content">
