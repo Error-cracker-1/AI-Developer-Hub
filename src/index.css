@@ -1090,7 +1090,9 @@ button:disabled {
     padding: 0;
     margin-bottom: 35px;
   }
-  .brand > span:last-child,
+  .brand > span:last-child {
+    display: none;
+  }
   .side-label,
   .nav-item:not(.active),
   .nav-item {
