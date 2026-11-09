@@ -396,13 +396,13 @@ function App() {
         >
           <Sparkles size={17} /> AI Assistant <span className="nav-dot" />
         </button>
-        <button
+        {featureFlags.projects_tab && <button
           className={tab === 'Projects' ? 'nav-item active' : 'nav-item'}
           onClick={() => setTab('Projects')}
         >
           <FolderGit2 size={17} /> My Projects{' '}
           <span className="nav-count">{projects.length}</span>
-        </button>
+        </button>}
         {featureFlags.session_history && <button
           className={tab === 'History' ? 'nav-item active' : 'nav-item'}
           onClick={() => setTab('History')}
