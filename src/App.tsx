@@ -196,6 +196,10 @@ function App() {
   const [projectDueDate, setProjectDueDate] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [projectAiAction, setProjectAiAction] = useState<'roadmap' | 'tasks' | 'health'>('roadmap');
+  const [projectAiResult, setProjectAiResult] = useState('');
+  const [projectAiError, setProjectAiError] = useState('');
+  const [projectAiLoading, setProjectAiLoading] = useState(false);
   const [playgroundLanguage, setPlaygroundLanguage] = useState<'JavaScript' | 'HTML/CSS'>('JavaScript');
   const [playgroundCode, setPlaygroundCode] = useState("console.log('Hello, DevHub!');\n\nconst numbers = [1, 2, 3];\nconsole.log('Total:', numbers.reduce((sum, number) => sum + number, 0));");
   const [playgroundOutput, setPlaygroundOutput] = useState('Run your code to see console output here.');
@@ -426,6 +430,41 @@ function App() {
     const tasks = (project.tasks || []).map(task => task.id === taskId ? { ...task, done: !task.done } : task);
     const progress = tasks.length ? Math.round(tasks.filter(task => task.done).length / tasks.length * 100) : project.progress || 0;
     updateProject(projectId, { tasks, progress, status: progress === 100 && tasks.length ? 'Done' : project.status === 'Done' ? 'In progress' : project.status });
+  }
+
+  async function runProjectAssistant(action: 'roadmap' | 'tasks' | 'health') {
+    if (!selectedProject || projectAiLoading) return;
+    setProjectAiAction(action);
+    setProjectAiLoading(true);
+    setProjectAiError('');
+    setProjectAiResult('');
+    try {
+      const response = await fetch('/api/project-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          project: {
+            name: selectedProject.name,
+            language: selectedProject.language,
+            status: selectedProject.status,
+            notes: selectedProject.notes,
+            priority: selectedProject.priority,
+            dueDate: selectedProject.dueDate,
+            progress: selectedProject.progress,
+            tasks: selectedProject.tasks,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as { text?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || 'The project assistant could not complete this request.');
+      if (!payload.text?.trim()) throw new Error('The project assistant returned an empty response. Please try again.');
+      setProjectAiResult(payload.text);
+    } catch (error) {
+      setProjectAiError(error instanceof Error ? error.message : 'The project assistant is temporarily unavailable.');
+    } finally {
+      setProjectAiLoading(false);
+    }
   }
 
   return (
@@ -827,6 +866,18 @@ function App() {
                 <div className="project-detail-grid">
                   <div className="project-detail-main">
                     <label className="field-label">PROJECT NOTES<textarea value={selectedProject.notes} onChange={event => updateProject(selectedProject.id, { notes: event.target.value })} rows={5} placeholder="Project goals, decisions, and next steps…" /></label>
+                    <div className="project-detail-panel project-ai-panel">
+                      <div className="project-panel-heading"><h2><Sparkles size={17}/> AI Project Assistant</h2><span>Gemini-powered</span></div>
+                      <p className="project-muted">Get actionable guidance based on this project's stack, goals, progress, and tasks.</p>
+                      <div className="project-ai-actions">
+                        <button className={projectAiAction === 'roadmap' ? 'project-ai-action active' : 'project-ai-action'} disabled={projectAiLoading} onClick={() => void runProjectAssistant('roadmap')}><WandSparkles size={15}/> Build roadmap</button>
+                        <button className={projectAiAction === 'tasks' ? 'project-ai-action active' : 'project-ai-action'} disabled={projectAiLoading} onClick={() => void runProjectAssistant('tasks')}><Check size={15}/> Suggest tasks</button>
+                        <button className={projectAiAction === 'health' ? 'project-ai-action active' : 'project-ai-action'} disabled={projectAiLoading} onClick={() => void runProjectAssistant('health')}><Activity size={15}/> Project health</button>
+                      </div>
+                      {projectAiLoading && <div className="project-ai-loading"><LoaderCircle size={17}/> Analyzing project…</div>}
+                      {projectAiError && <p className="project-ai-error" role="alert">{projectAiError}</p>}
+                      {projectAiResult && <div className="project-ai-result"><div className="project-ai-result-head"><strong>{projectAiAction === 'roadmap' ? 'Suggested roadmap' : projectAiAction === 'tasks' ? 'Suggested tasks' : 'Project health report'}</strong><button className="copy-button" onClick={() => { void navigator.clipboard?.writeText(projectAiResult); }}>Copy</button></div><pre>{projectAiResult}</pre></div>}
+                    </div>
                     <div className="project-detail-panel">
                       <div className="project-panel-heading"><h2>Tasks & milestones</h2><span>{(selectedProject.tasks || []).filter(task => task.done).length}/{(selectedProject.tasks || []).length} complete</span></div>
                       <form className="project-task-add" onSubmit={event => { event.preventDefault(); addProjectTask(selectedProject.id); }}><input value={newTaskTitle} onChange={event => setNewTaskTitle(event.target.value)} placeholder="Add a task or milestone…" aria-label="New project task" /><button className="generate-button" type="submit"><Plus size={15}/> Add</button></form>
