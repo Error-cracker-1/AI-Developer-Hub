@@ -13,7 +13,7 @@ const defaults = {
   code_playground: true,
   release_notes: true,
   session_history: process.env.VERCEL_ENV !== 'production',
-  projects_tab: true,
+  projects_tab: process.env.VERCEL_ENV !== 'production',
 } as const;
 
 const vercelKeys = {
