@@ -153,6 +153,9 @@ function readProjects(): Project[] {
 
 function App() {
   const featureFlags = useFeatureFlags();
+  useEffect(() => {
+    if (!featureFlags.project_history && tab === 'History') setTab('Workspace');
+  }, [featureFlags.project_history, tab]);
   const [mode, setMode] = useState<Mode>('Explain code');
   const [language, setLanguage] = useState('Python');
   const [task, setTask] = useState('');
@@ -399,13 +402,13 @@ function App() {
           <FolderGit2 size={17} /> My Projects{' '}
           <span className="nav-count">{projects.length}</span>
         </button>
-        <button
+        {featureFlags.project_history && <button
           className={tab === 'History' ? 'nav-item active' : 'nav-item'}
           onClick={() => setTab('History')}
         >
           <Clock3 size={17} /> Session History
           <span className="nav-count">{sessions.length}</span>
-        </button>
+        </button>}
         <div className="sidebar-bottom">
           <div className="status-card">
             <span className="status-icon">
@@ -913,7 +916,7 @@ function App() {
               </div>
             )}
           </div>
-        ) : (
+        ) : tab === 'History' && featureFlags.project_history ? (
           <div className="content projects-content history-content">
             <div className="projects-heading">
               <div>
@@ -985,7 +988,7 @@ function App() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
         <footer className="footer">
           <span>
             DEVHUB <b>•</b> BUILT FOR BUILDERS
