@@ -153,9 +153,6 @@ function readProjects(): Project[] {
 
 function App() {
   const featureFlags = useFeatureFlags();
-  useEffect(() => {
-    if (!featureFlags.project_history && tab === 'History') setTab('Workspace');
-  }, [featureFlags.project_history, tab]);
   const [mode, setMode] = useState<Mode>('Explain code');
   const [language, setLanguage] = useState('Python');
   const [task, setTask] = useState('');
@@ -165,6 +162,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'Workspace' | 'Projects' | 'History'>('Workspace');
+  useEffect(() => {
+    if (!featureFlags.project_history && tab === 'History') setTab('Workspace');
+  }, [featureFlags.project_history, tab]);
   const [sessions, setSessions] = useState<Session[]>(readSessions);
   const [historyQuery, setHistoryQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>(readProjects);
