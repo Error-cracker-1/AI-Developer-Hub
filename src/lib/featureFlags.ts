@@ -4,7 +4,7 @@ export const defaultFeatureFlags = {
   code_playground: true,
   release_notes: true,
   session_history: false,
-  projects_tab: true,
+  projects_tab: false,
 } as const;
 
 export type FeatureFlagValues = {
