@@ -60,6 +60,8 @@ type Project = {
   tags?: string[];
   tasks?: ProjectTask[];
   updatedAt?: string;
+  githubUrl?: string;
+  liveUrl?: string;
 };
 const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
   {
@@ -196,6 +198,9 @@ function App() {
   const [projectDueDate, setProjectDueDate] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [githubActivity, setGithubActivity] = useState<{name:string; description:string; stars:number; forks:number; openIssues:number; commits:Array<{message:string;date:string;url:string}>} | null>(null);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState('');
   const [projectAiAction, setProjectAiAction] = useState<'roadmap' | 'tasks' | 'health'>('roadmap');
   const [projectAiResult, setProjectAiResult] = useState('');
   const [projectAiError, setProjectAiError] = useState('');
@@ -430,6 +435,19 @@ function App() {
     const tasks = (project.tasks || []).map(task => task.id === taskId ? { ...task, done: !task.done } : task);
     const progress = tasks.length ? Math.round(tasks.filter(task => task.done).length / tasks.length * 100) : project.progress || 0;
     updateProject(projectId, { tasks, progress, status: progress === 100 && tasks.length ? 'Done' : project.status === 'Done' ? 'In progress' : project.status });
+  }
+
+  async function loadGithubActivity(project: Project) {
+    const match = (project.githubUrl || '').match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/?$/i);
+    if (!match) { setGithubError('Add a valid public GitHub repository URL in Project overview.'); return; }
+    setGithubLoading(true); setGithubError(''); setGithubActivity(null);
+    try {
+      const response = await fetch('/api/project-github?owner=' + encodeURIComponent(match[1]) + '&repo=' + encodeURIComponent(match[2]));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load GitHub activity.');
+      setGithubActivity(data);
+    } catch (error) { setGithubError(error instanceof Error ? error.message : 'GitHub activity is unavailable.'); }
+    finally { setGithubLoading(false); }
   }
 
   async function runProjectAssistant(action: 'roadmap' | 'tasks' | 'health') {
@@ -889,6 +907,12 @@ function App() {
                       <label className="field-label">STATUS<select value={selectedProject.status} onChange={event => updateProject(selectedProject.id, { status: event.target.value, progress: event.target.value === 'Done' ? 100 : selectedProject.progress })}><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select></label>
                       <label className="field-label">PRIORITY<select value={selectedProject.priority || 'Medium'} onChange={event => updateProject(selectedProject.id, { priority: event.target.value as Project['priority'] })}><option>Low</option><option>Medium</option><option>High</option></select></label>
                       <label className="field-label">DUE DATE<input type="date" value={selectedProject.dueDate || ''} onChange={event => updateProject(selectedProject.id, { dueDate: event.target.value })}/></label>
+                      <label className="field-label">GITHUB REPOSITORY<input type="url" placeholder="https://github.com/owner/repo" value={selectedProject.githubUrl || ''} onChange={event => updateProject(selectedProject.id, {githubUrl:event.target.value})}/></label>
+                      <label className="field-label">LIVE DEPLOYMENT URL<input type="url" placeholder="https://your-project.vercel.app" value={selectedProject.liveUrl || ''} onChange={event => updateProject(selectedProject.id, {liveUrl:event.target.value})}/></label>
+                      {selectedProject.liveUrl && /^https:\/\//i.test(selectedProject.liveUrl) && <a className="project-integration-link" href={selectedProject.liveUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={14}/> Open live deployment</a>}
+                      {selectedProject.githubUrl && <button className="copy-button" onClick={() => void loadGithubActivity(selectedProject)} disabled={githubLoading}>{githubLoading ? 'Loading GitHub…' : 'Refresh GitHub activity'}</button>}
+                      {githubError && <p className="project-ai-error" role="alert">{githubError}</p>}
+                      {githubActivity && <div className="github-activity"><strong>{githubActivity.name}</strong><p>{githubActivity.description || 'No repository description.'}</p><div className="github-stats">★ {githubActivity.stars} · Forks {githubActivity.forks} · Open issues {githubActivity.openIssues}</div>{githubActivity.commits.map((commit,index)=><a key={index} href={commit.url} target="_blank" rel="noreferrer">{commit.message}<small>{new Date(commit.date).toLocaleDateString()}</small></a>)}</div>}
                       <label className="field-label">PROGRESS · {selectedProject.progress || 0}%<input type="range" min="0" max="100" step="5" value={selectedProject.progress || 0} onChange={event => updateProject(selectedProject.id, { progress: Number(event.target.value), status: Number(event.target.value) === 100 ? 'Done' : selectedProject.status === 'Done' ? 'In progress' : selectedProject.status })}/></label>
                       <div className="project-progress-track"><span style={{width: (selectedProject.progress || 0) + '%'}}/></div>
                     </div>
