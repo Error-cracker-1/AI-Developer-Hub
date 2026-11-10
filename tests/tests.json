@@ -20,7 +20,10 @@
   {
     "name": "Validate empty coding requests",
     "viewport": "mobile",
-    "covers": ["empty-input validation", "mobile coding assistant workflow"],
+    "covers": [
+      "empty-input validation",
+      "mobile coding assistant workflow"
+    ],
     "description": "Verifies an empty request is blocked with a clear message on a mobile-sized screen.",
     "steps": [
       "Open the AI workspace on mobile",
@@ -70,5 +73,24 @@
       "Submit another task while the service returns a simulated error"
     ],
     "expected": "The result can be copied, and a visible error message offers the user a way to retry."
+  },
+  {
+    "name": "Export and restore project backup",
+    "viewport": "mobile",
+    "covers": [
+      "project JSON backup export",
+      "Markdown export",
+      "validated JSON import",
+      "merge without overwriting existing projects"
+    ],
+    "description": "Verifies project data can be exported and restored without replacing existing projects.",
+    "steps": [
+      "Open Projects and create a project with notes and at least one task",
+      "Export the complete project backup as JSON",
+      "Import the exported JSON backup after removing that project",
+      "Confirm the project and task data are restored",
+      "Export the project as Markdown"
+    ],
+    "expected": "A JSON backup downloads, valid project data imports and persists, existing IDs are not overwritten, and Markdown export downloads."
   }
 ]
