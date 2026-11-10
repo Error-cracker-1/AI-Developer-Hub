@@ -1405,3 +1405,10 @@ button:disabled {
 .project-ai-result-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#a5efbd;font-size:12px}
 .project-ai-result pre{max-height:420px;overflow:auto;margin:10px 0 0;color:#d8e3dc;font:12px/1.65 'DM Sans',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:520px){.project-ai-actions{grid-template-columns:1fr}.project-ai-action{justify-content:flex-start;padding:11px}}
+
+.project-integration-link{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#a5efbd;font-size:11px;text-decoration:none}
+.github-activity{display:grid;gap:8px;margin-top:12px;padding:12px;border:1px solid #303847;border-radius:8px;background:#0d131b;color:#dce6e0;font-size:11px}
+.github-activity p{margin:0;color:#8792a5}
+.github-stats{color:#a5efbd;font-size:10px}
+.github-activity a{display:grid;gap:4px;padding-top:8px;border-top:1px solid #252d38;color:#dce6e0;text-decoration:none;overflow-wrap:anywhere}
+.github-activity a small{color:#8792a5}
