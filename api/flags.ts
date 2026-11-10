@@ -14,6 +14,7 @@ const defaults = {
   release_notes: true,
   session_history: process.env.VERCEL_ENV !== 'production',
   projects_tab: process.env.VERCEL_ENV !== 'production',
+  aihub_ai_chat: true,
 } as const;
 
 const vercelKeys = {
@@ -23,6 +24,7 @@ const vercelKeys = {
   release_notes: 'release-notes',
   session_history: 'session-history',
   projects_tab: 'projects-tab',
+  aihub_ai_chat: 'aihub-ai-chat',
 } as const;
 
 type FlagKey = keyof typeof defaults;

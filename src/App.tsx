@@ -207,7 +207,8 @@ function App() {
   useEffect(() => {
     if (!featureFlags.session_history && tab === 'History') setTab('Workspace');
     if (!featureFlags.projects_tab && tab === 'Projects') setTab('Workspace');
-  }, [featureFlags.session_history, featureFlags.projects_tab, tab]);
+    if (!featureFlags.aihub_ai_chat && tab === 'Chat') setTab('Workspace');
+  }, [featureFlags.session_history, featureFlags.projects_tab, featureFlags.aihub_ai_chat, tab]);
   const [sessions, setSessions] = useState<Session[]>(readSessions);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(readChatMessages);
   const [chatInput, setChatInput] = useState('');
@@ -718,9 +719,9 @@ function App() {
         >
           <Sparkles size={17} /> AI Assistant <span className="nav-dot" />
         </button>
-        <button className={tab === 'Chat' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('Chat')}>
+        {featureFlags.aihub_ai_chat && <button className={tab === 'Chat' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('Chat')}>
           <MessageCircle size={17} /> Chat <span className="nav-dot" />
-        </button>
+        </button>}
         {featureFlags.projects_tab && <button
           className={tab === 'Projects' ? 'nav-item active' : 'nav-item'}
           onClick={() => setTab('Projects')}
@@ -768,7 +769,7 @@ function App() {
             <div className="top-avatar">D</div>
           </div>
         </header>
-        {tab === 'Chat' ? (
+        {tab === 'Chat' && featureFlags.aihub_ai_chat ? (
           <div className="chat-content">
             <div className="chat-heading">
               <div>
