@@ -5,6 +5,7 @@ export const defaultFeatureFlags = {
   release_notes: true,
   session_history: false,
   projects_tab: false,
+  aihub_ai_chat: true,
 } as const;
 
 export type FeatureFlagValues = {
