@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  Bot,
+  MessageCircle,
+  Send,
   ArrowUpRight,
   BookOpen,
   Check,
@@ -48,6 +51,7 @@ type Session = {
   createdAt: string;
 };
 type ProjectTask = { id: string; title: string; done: boolean };
+type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: string };
 type Project = {
   id: string;
   name: string;
@@ -152,6 +156,15 @@ const projectTemplates: Record<string, { label: string; language: string; notes:
   game: { label: 'Game project', language: 'JavaScript', notes: 'Create a playable game loop with clear controls, responsive presentation, and performance checks.', tags: ['Game', 'Interactive'], folder: 'Games', tasks: ['Write the core gameplay loop', 'Implement player input and controls', 'Build game state and scoring', 'Add feedback, sound, and visual polish', 'Test gameplay and performance', 'Publish a playable build'] },
 };
 
+function readChatMessages(): ChatMessage[] {
+  try {
+    const saved = localStorage.getItem('devhub-chat-v1');
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed.filter((item): item is ChatMessage => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string').slice(-60) : [];
+  } catch { return []; }
+}
+
 function readSessions(): Session[] {
   try {
     const saved = localStorage.getItem('devhub-history-v1');
@@ -196,6 +209,10 @@ function App() {
     if (!featureFlags.projects_tab && tab === 'Projects') setTab('Workspace');
   }, [featureFlags.session_history, featureFlags.projects_tab, tab]);
   const [sessions, setSessions] = useState<Session[]>(readSessions);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(readChatMessages);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
   const [historyQuery, setHistoryQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>(readProjects);
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -233,6 +250,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem('devhub-projects-v1', JSON.stringify(projects));
   }, [projects]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('devhub-chat-v1', JSON.stringify(chatMessages.slice(-60)));
+    } catch {
+      setChatError('Browser storage is full. Clear older chat messages to continue.');
+    }
+  }, [chatMessages]);
 
   useEffect(() => {
     try {
@@ -358,6 +383,51 @@ function App() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function sendChatMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const prompt = chatInput.trim();
+    if (!prompt || chatLoading) return;
+    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: prompt, createdAt: new Date().toISOString() };
+    const nextMessages = [...chatMessages, userMessage].slice(-24);
+    setChatMessages(current => [...current, userMessage].slice(-60));
+    setChatInput('');
+    setChatError('');
+    setChatLoading(true);
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: nextMessages.map(({ role, content }) => ({ role, content })),
+          context: {
+            projects: projects.slice(0, 12).map(project => ({
+              name: project.name, language: project.language, status: project.status,
+              priority: project.priority, progress: project.progress,
+              tags: (project.tags || []).slice(0, 8),
+              tasks: (project.tasks || []).slice(0, 12).map(item => ({ title: item.title, done: item.done })),
+            })),
+            recentSessions: sessions.slice(0, 4).map(item => ({
+              mode: item.mode, language: item.language, task: item.task.slice(0, 700),
+              result: item.result.slice(0, 700),
+            })),
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as { text?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || `Chat request failed (HTTP ${response.status}).`);
+      if (typeof payload.text !== 'string' || !payload.text.trim()) throw new Error('DevHub returned an empty response. Please retry.');
+      setChatMessages(current => [...current, { id: crypto.randomUUID(), role: 'assistant', content: payload.text!.trim(), createdAt: new Date().toISOString() }].slice(-60));
+      track('Chat message completed');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The chat service is temporarily unavailable.';
+      setChatError(message);
+      setChatInput(prompt);
+      track('Chat message failed', { reason: message.includes('429') ? 'rate_limited' : 'request_error' });
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -648,6 +718,9 @@ function App() {
         >
           <Sparkles size={17} /> AI Assistant <span className="nav-dot" />
         </button>
+        <button className={tab === 'Chat' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('Chat')}>
+          <MessageCircle size={17} /> Chat <span className="nav-dot" />
+        </button>
         {featureFlags.projects_tab && <button
           className={tab === 'Projects' ? 'nav-item active' : 'nav-item'}
           onClick={() => setTab('Projects')}
@@ -695,7 +768,48 @@ function App() {
             <div className="top-avatar">D</div>
           </div>
         </header>
-        {tab === 'Workspace' ? (
+        {tab === 'Chat' ? (
+          <div className="chat-content">
+            <div className="chat-heading">
+              <div>
+                <div className="eyebrow"><MessageCircle size={14} /> YOUR ALWAYS-AVAILABLE DEVELOPMENT PARTNER</div>
+                <h1>Chat with <span>DevHub.</span></h1>
+                <p>Ask coding questions, debug errors, plan features, and get help with the projects and recent work saved in this browser.</p>
+              </div>
+              <button className="secondary-button" disabled={!chatMessages.length || chatLoading} onClick={() => { setChatMessages([]); setChatError(''); }}> <Trash2 size={14}/> Clear chat</button>
+            </div>
+            <section className="chat-panel" aria-label="DevHub chat">
+              <div className="chat-messages" aria-live="polite">
+                {!chatMessages.length && (
+                  <div className="chat-welcome">
+                    <span className="chat-welcome-icon"><Bot size={25}/></span>
+                    <h2>What are we building today?</h2>
+                    <p>I'm DevHub's coding assistant. I can use your saved project list and recent workspace sessions as context.</p>
+                    <div className="chat-suggestions">
+                      {['Help me plan my next feature','Explain an API design pattern','Review my project priorities'].map(prompt => <button key={prompt} onClick={() => setChatInput(prompt)}>{prompt}<ArrowUpRight size={13}/></button>)}
+                    </div>
+                  </div>
+                )}
+                {chatMessages.map(message => (
+                  <article className={`chat-message ${message.role}`} key={message.id}>
+                    <span className="chat-message-avatar">{message.role === 'assistant' ? <Bot size={17}/> : 'Y'}</span>
+                    <div className="chat-bubble">
+                      <div className="chat-message-meta">{message.role === 'assistant' ? 'DEVHUB AI' : 'YOU'}</div>
+                      <p>{message.content}</p>
+                    </div>
+                  </article>
+                ))}
+                {chatLoading && <article className="chat-message assistant"><span className="chat-message-avatar"><Bot size={17}/></span><div className="chat-bubble"><div className="chat-message-meta">DEVHUB AI</div><p className="chat-typing">Thinking<span> · </span><span>· </span><span>·</span></p></div></article>}
+              </div>
+              {chatError && <div className="chat-error" role="alert">{chatError}</div>}
+              <form className="chat-compose" onSubmit={sendChatMessage}>
+                <textarea value={chatInput} onChange={event => setChatInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={2} maxLength={8000} placeholder="Ask DevHub anything about coding or your projects…" aria-label="Message DevHub" disabled={chatLoading}/>
+                <button className="generate-button chat-send" type="submit" disabled={chatLoading || !chatInput.trim()}>{chatLoading ? <LoaderCircle size={17} className="spin"/> : <Send size={17}/>} Send</button>
+              </form>
+              <p className="chat-disclaimer">AI responses can be incorrect. Do not share passwords, API keys, or other secrets. Chat history is saved in this browser.</p>
+            </section>
+          </div>
+        ) : tab === 'Workspace' ? (
           <div className="content">
             <div className="hero">
               <div className="hero-copy">
