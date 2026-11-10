@@ -144,6 +144,14 @@ const starterProjects: Project[] = [
   },
 ];
 
+const projectTemplates: Record<string, { label: string; language: string; notes: string; tags: string[]; folder: string; tasks: string[] }> = {
+  blank: { label: 'Blank project', language: 'Python', notes: '', tags: [], folder: 'General', tasks: [] },
+  web: { label: 'Web application', language: 'TypeScript', notes: 'Build a responsive web experience with clear navigation, accessible UI, and reliable deployment.', tags: ['Web', 'Frontend'], folder: 'Web apps', tasks: ['Define scope and target users', 'Create page structure and navigation', 'Build responsive components', 'Add validation and error states', 'Test mobile and desktop layouts', 'Deploy and verify production'] },
+  ai: { label: 'AI application', language: 'Python', notes: 'Build an AI-powered feature with safe API handling, useful evaluation, and clear user feedback.', tags: ['AI', 'API'], folder: 'AI projects', tasks: ['Define the AI use case and success criteria', 'Design prompts and expected output', 'Implement server-side API integration', 'Add input validation and error handling', 'Test quality, latency, and edge cases', 'Document setup and deployment'] },
+  api: { label: 'Backend / API', language: 'TypeScript', notes: 'Develop a maintainable API with validated inputs, predictable responses, and operational visibility.', tags: ['Backend', 'API'], folder: 'Backend', tasks: ['Define endpoints and data contracts', 'Implement request validation', 'Add authentication and authorization if needed', 'Handle errors and rate limits', 'Add automated tests', 'Document and deploy the API'] },
+  game: { label: 'Game project', language: 'JavaScript', notes: 'Create a playable game loop with clear controls, responsive presentation, and performance checks.', tags: ['Game', 'Interactive'], folder: 'Games', tasks: ['Write the core gameplay loop', 'Implement player input and controls', 'Build game state and scoring', 'Add feedback, sound, and visual polish', 'Test gameplay and performance', 'Publish a playable build'] },
+};
+
 function readSessions(): Session[] {
   try {
     const saved = localStorage.getItem('devhub-history-v1');
@@ -192,6 +200,7 @@ function App() {
   const [projects, setProjects] = useState<Project[]>(readProjects);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [projectName, setProjectName] = useState('');
+  const [projectTemplate, setProjectTemplate] = useState('blank');
   const [projectLanguage, setProjectLanguage] = useState('Python');
   const [projectNotes, setProjectNotes] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
@@ -397,6 +406,15 @@ function App() {
     }
   }
 
+  function applyProjectTemplate(templateKey: string) {
+    const template = projectTemplates[templateKey] || projectTemplates.blank;
+    setProjectTemplate(templateKey in projectTemplates ? templateKey : 'blank');
+    setProjectLanguage(template.language);
+    setProjectNotes(template.notes);
+    setProjectTagsInput(template.tags.join(', '));
+    setProjectFolder(template.folder);
+  }
+
   function addProject(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!projectName.trim()) return;
@@ -412,10 +430,11 @@ function App() {
       tags: projectTagsInput.split(',').map(tag => tag.trim()).filter(Boolean).slice(0, 10),
       folder: projectFolder.trim() || 'General',
       archived: false,
-      tasks: [],
+      tasks: (projectTemplates[projectTemplate]?.tasks || []).map(title => ({ id: crypto.randomUUID(), title, done: false })),
       updatedAt: new Date().toISOString(),
     }, ...current]);
     setProjectName('');
+    setProjectTemplate('blank');
     setProjectNotes('');
     setProjectPriority('Medium');
     setProjectDueDate('');
@@ -1046,6 +1065,7 @@ function App() {
             ) : <>
               <div className="projects-heading"><div><div className="eyebrow"><FolderGit2 size={14}/> YOUR WORK, ORGANIZED</div><h1>My <span>Projects.</span></h1><p>Plan, organize, and track your development work. Project data is saved locally in this browser.</p></div><div className="project-heading-actions"><button className="secondary-button" disabled={!projects.length} onClick={() => exportProjects('json')}><Download size={15}/> Backup JSON</button><button className="secondary-button" disabled={!projects.length} onClick={() => exportProjects('markdown')}>Export Markdown</button><button className="secondary-button" onClick={() => projectImportInputRef.current?.click()}>Import backup</button><input ref={projectImportInputRef} type="file" accept=".json,application/json" hidden onChange={importProjects}/><button className="generate-button" onClick={() => setShowProjectForm(value => !value)}><Plus size={17}/> New project</button></div></div>
               {showProjectForm && <form className="project-form" onSubmit={addProject}>
+                <label className="field-label">STARTER TEMPLATE<select value={projectTemplate} onChange={event => applyProjectTemplate(event.target.value)}>{Object.entries(projectTemplates).map(([key, template]) => <option key={key} value={key}>{template.label}</option>)}</select></label>
                 <div className="form-grid"><label className="field-label">PROJECT NAME<input value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="e.g. Portfolio website" required/></label><label className="field-label">LANGUAGE / STACK<select value={projectLanguage} onChange={event => setProjectLanguage(event.target.value)}>{languages.map(item => <option key={item}>{item}</option>)}</select></label></div>
                 <div className="form-grid"><label className="field-label">PRIORITY<select value={projectPriority} onChange={event => setProjectPriority(event.target.value as 'Low' | 'Medium' | 'High')}><option>Low</option><option>Medium</option><option>High</option></select></label><label className="field-label">DUE DATE<input type="date" value={projectDueDate} onChange={event => setProjectDueDate(event.target.value)}/></label></div>
                 <div className="form-grid"><label className="field-label">FOLDER<input value={projectFolder} maxLength={40} onChange={event => setProjectFolder(event.target.value)} placeholder="General, Client work…"/></label><label className="field-label">TAGS · COMMA SEPARATED<input value={projectTagsInput} onChange={event => setProjectTagsInput(event.target.value)} placeholder="React, AI, Portfolio"/></label></div>

@@ -92,5 +92,22 @@
       "Export the project as Markdown"
     ],
     "expected": "A JSON backup downloads, valid project data imports and persists, existing IDs are not overwritten, and Markdown export downloads."
+  },
+  {
+    "name": "Create a project from a starter template",
+    "viewport": "mobile",
+    "covers": [
+      "project starter templates",
+      "pre-filled project metadata",
+      "starter task checklist"
+    ],
+    "description": "Verifies choosing a project template pre-fills the project form and creates its suggested checklist.",
+    "steps": [
+      "Open Projects and choose New project",
+      "Select the AI application template",
+      "Enter a project name and save",
+      "Open the new project and inspect its tasks"
+    ],
+    "expected": "The form receives the template's language, notes, tags and folder, and the saved project contains the template's unchecked starter tasks."
   }
 ]
