@@ -204,6 +204,8 @@ function App() {
   const [projectTagsInput, setProjectTagsInput] = useState('');
   const [projectFolderFilter, setProjectFolderFilter] = useState('All');
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
+  const [projectBackupMessage, setProjectBackupMessage] = useState('');
+  const projectImportInputRef = useRef<HTMLInputElement>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [githubActivity, setGithubActivity] = useState<{name:string; description:string; stars:number; forks:number; openIssues:number; commits:Array<{message:string;date:string;url:string}>} | null>(null);
@@ -432,6 +434,112 @@ function App() {
 
   function updateProject(projectId: string, patch: Partial<Project>) {
     setProjects(current => current.map(project => project.id === projectId ? { ...project, ...patch, updatedAt: new Date().toISOString() } : project));
+  }
+
+  function downloadProjectFile(filename: string, content: string, type: string) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportProjects(format: 'json' | 'markdown') {
+    if (!projects.length) return;
+    if (format === 'json') {
+      downloadProjectFile('devhub-project-backup.json', JSON.stringify({
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        projects,
+      }, null, 2), 'application/json;charset=utf-8');
+      setProjectBackupMessage('Project backup exported as JSON.');
+      return;
+    }
+    const markdown = ['# AI Developer Hub — Projects', '', ...projects.flatMap(project => [
+      `## ${project.name}`,
+      '',
+      `- **Language:** ${project.language}`,
+      `- **Status:** ${project.status}`,
+      `- **Progress:** ${project.progress || 0}%`,
+      `- **Priority:** ${project.priority || 'Medium'}`,
+      `- **Due date:** ${project.dueDate || 'Not set'}`,
+      `- **Folder:** ${project.folder || 'General'}`,
+      `- **Tags:** ${(project.tags || []).join(', ') || 'None'}`,
+      '',
+      project.notes || 'No notes.',
+      '',
+      '### Tasks',
+      ...((project.tasks || []).length ? (project.tasks || []).map(task => `- [${task.done ? 'x' : ' '}] ${task.title}`) : ['- No tasks']),
+      '',
+    ])].join('\n');
+    downloadProjectFile('devhub-projects.md', markdown, 'text/markdown;charset=utf-8');
+    setProjectBackupMessage('Projects exported as Markdown.');
+  }
+
+  function exportSingleProject(project: Project, format: 'json' | 'markdown') {
+    const safeName = project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project';
+    if (format === 'json') {
+      downloadProjectFile(`devhub-${safeName}.json`, JSON.stringify(project, null, 2), 'application/json;charset=utf-8');
+      return;
+    }
+    const markdown = [
+      `# ${project.name}`, '',
+      `- **Language:** ${project.language}`,
+      `- **Status:** ${project.status}`,
+      `- **Progress:** ${project.progress || 0}%`,
+      `- **Priority:** ${project.priority || 'Medium'}`,
+      `- **Due date:** ${project.dueDate || 'Not set'}`,
+      `- **Folder:** ${project.folder || 'General'}`,
+      `- **Tags:** ${(project.tags || []).join(', ') || 'None'}`, '',
+      project.notes || 'No notes.', '', '## Tasks',
+      ...((project.tasks || []).length ? (project.tasks || []).map(task => `- [${task.done ? 'x' : ' '}] ${task.title}`) : ['- No tasks']),
+    ].join('\n');
+    downloadProjectFile(`devhub-${safeName}.md`, markdown, 'text/markdown;charset=utf-8');
+  }
+
+  async function importProjects(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setProjectBackupMessage('Backup is too large. Choose a JSON file under 2 MB.');
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const candidates = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' && Array.isArray((parsed as { projects?: unknown }).projects) ? (parsed as { projects: unknown[] }).projects : null);
+      if (!candidates || candidates.length > 500) throw new Error('Choose a valid DevHub project backup containing up to 500 projects.');
+      const valid = candidates.filter((item): item is Project => Boolean(
+        item && typeof item === 'object' &&
+        typeof (item as Project).id === 'string' &&
+        typeof (item as Project).name === 'string' && (item as Project).name.trim() &&
+        typeof (item as Project).language === 'string'
+      )).map(project => ({
+        ...project,
+        status: typeof project.status === 'string' ? project.status : 'Planned',
+        notes: typeof project.notes === 'string' ? project.notes : '',
+        progress: Math.max(0, Math.min(100, Number(project.progress) || 0)),
+        priority: project.priority === 'Low' || project.priority === 'High' ? project.priority : 'Medium' as const,
+        dueDate: typeof project.dueDate === 'string' ? project.dueDate : '',
+        tags: Array.isArray(project.tags) ? project.tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 10) : [],
+        tasks: Array.isArray(project.tasks) ? project.tasks.filter(task => task && typeof task.id === 'string' && typeof task.title === 'string').map(task => ({ id: task.id, title: task.title, done: Boolean(task.done) })) : [],
+        folder: typeof project.folder === 'string' && project.folder.trim() ? project.folder.slice(0, 40) : 'General',
+        archived: Boolean(project.archived),
+        updatedAt: typeof project.updatedAt === 'string' ? project.updatedAt : new Date().toISOString(),
+      }));
+      if (!valid.length) throw new Error('No valid projects were found in this backup.');
+      setProjects(current => {
+        const existing = new Set(current.map(project => project.id));
+        return [...valid.filter(project => !existing.has(project.id)), ...current];
+      });
+      setProjectBackupMessage(`Imported ${valid.length} project record(s). Existing project IDs were kept unchanged.`);
+    } catch (error) {
+      setProjectBackupMessage(error instanceof Error ? error.message : 'Could not read this project backup.');
+    }
   }
 
   function addProjectTask(projectId: string) {
@@ -921,7 +1029,7 @@ function App() {
                       <label className="field-label">TAGS · COMMA SEPARATED<input value={(selectedProject.tags || []).join(', ')} placeholder="React, AI, Portfolio" onChange={event => updateProject(selectedProject.id, {tags:event.target.value.split(',').map(tag => tag.trim()).filter(Boolean).slice(0,10)})}/></label>
                       <label className="field-label">STATUS<select value={selectedProject.status} onChange={event => updateProject(selectedProject.id, { status: event.target.value, progress: event.target.value === 'Done' ? 100 : selectedProject.progress })}><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select></label>
                       <label className="field-label">PRIORITY<select value={selectedProject.priority || 'Medium'} onChange={event => updateProject(selectedProject.id, { priority: event.target.value as Project['priority'] })}><option>Low</option><option>Medium</option><option>High</option></select></label>
-                      <button className="secondary-button project-archive-action" onClick={() => { updateProject(selectedProject.id, {archived: !selectedProject.archived}); setSelectedProjectId(null); }}>{selectedProject.archived ? 'Restore project' : 'Archive project'}</button>
+                      <div className="project-backup-actions"><button className="secondary-button" onClick={() => exportSingleProject(selectedProject, 'json')}><Download size={14}/> Export JSON</button><button className="secondary-button" onClick={() => exportSingleProject(selectedProject, 'markdown')}>Export Markdown</button></div><button className="secondary-button project-archive-action" onClick={() => { updateProject(selectedProject.id, {archived: !selectedProject.archived}); setSelectedProjectId(null); }}>{selectedProject.archived ? 'Restore project' : 'Archive project'}</button>
                       <label className="field-label">DUE DATE<input type="date" value={selectedProject.dueDate || ''} onChange={event => updateProject(selectedProject.id, { dueDate: event.target.value })}/></label>
                       <label className="field-label">GITHUB REPOSITORY<input type="url" placeholder="https://github.com/owner/repo" value={selectedProject.githubUrl || ''} onChange={event => updateProject(selectedProject.id, {githubUrl:event.target.value})}/></label>
                       <label className="field-label">LIVE DEPLOYMENT URL<input type="url" placeholder="https://your-project.vercel.app" value={selectedProject.liveUrl || ''} onChange={event => updateProject(selectedProject.id, {liveUrl:event.target.value})}/></label>
@@ -936,7 +1044,7 @@ function App() {
                 </div>
               </section>
             ) : <>
-              <div className="projects-heading"><div><div className="eyebrow"><FolderGit2 size={14}/> YOUR WORK, ORGANIZED</div><h1>My <span>Projects.</span></h1><p>Plan, organize, and track your development work. Project data is saved locally in this browser.</p></div><button className="generate-button" onClick={() => setShowProjectForm(value => !value)}><Plus size={17}/> New project</button></div>
+              <div className="projects-heading"><div><div className="eyebrow"><FolderGit2 size={14}/> YOUR WORK, ORGANIZED</div><h1>My <span>Projects.</span></h1><p>Plan, organize, and track your development work. Project data is saved locally in this browser.</p></div><div className="project-heading-actions"><button className="secondary-button" disabled={!projects.length} onClick={() => exportProjects('json')}><Download size={15}/> Backup JSON</button><button className="secondary-button" disabled={!projects.length} onClick={() => exportProjects('markdown')}>Export Markdown</button><button className="secondary-button" onClick={() => projectImportInputRef.current?.click()}>Import backup</button><input ref={projectImportInputRef} type="file" accept=".json,application/json" hidden onChange={importProjects}/><button className="generate-button" onClick={() => setShowProjectForm(value => !value)}><Plus size={17}/> New project</button></div></div>
               {showProjectForm && <form className="project-form" onSubmit={addProject}>
                 <div className="form-grid"><label className="field-label">PROJECT NAME<input value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="e.g. Portfolio website" required/></label><label className="field-label">LANGUAGE / STACK<select value={projectLanguage} onChange={event => setProjectLanguage(event.target.value)}>{languages.map(item => <option key={item}>{item}</option>)}</select></label></div>
                 <div className="form-grid"><label className="field-label">PRIORITY<select value={projectPriority} onChange={event => setProjectPriority(event.target.value as 'Low' | 'Medium' | 'High')}><option>Low</option><option>Medium</option><option>High</option></select></label><label className="field-label">DUE DATE<input type="date" value={projectDueDate} onChange={event => setProjectDueDate(event.target.value)}/></label></div>
@@ -944,6 +1052,7 @@ function App() {
                 <label className="field-label">NOTES<textarea value={projectNotes} onChange={event => setProjectNotes(event.target.value)} placeholder="What are you building next?" rows={3}/></label>
                 <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setShowProjectForm(false)}>Cancel</button><button className="generate-button" type="submit"><Plus size={16}/> Save project</button></div>
               </form>}
+              {projectBackupMessage && <p className="project-backup-message" role="status">{projectBackupMessage}</p>}
               <div className="project-summary"><div><span>Total projects</span><strong>{projects.length}</strong></div><div><span>In progress</span><strong>{projects.filter(project => project.status === 'In progress').length}</strong></div><div><span>Completed</span><strong>{projects.filter(project => project.status === 'Done').length}</strong></div></div>
               <div className="project-toolbar"><label className="history-search"><Search size={17}/><input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects, stacks, notes…"/></label><select aria-label="Filter by folder" value={projectFolderFilter} onChange={event => setProjectFolderFilter(event.target.value)}><option>All</option>{projectFolders.map(folder => <option key={folder}>{folder}</option>)}</select><button className={showArchivedProjects ? 'secondary-button archive-toggle active' : 'secondary-button archive-toggle'} onClick={() => setShowArchivedProjects(value => !value)}>{showArchivedProjects ? 'View active projects' : 'View archive'} ({projects.filter(project => Boolean(project.archived) === !showArchivedProjects).length})</button><select aria-label="Filter by status" value={projectStatusFilter} onChange={event => setProjectStatusFilter(event.target.value)}><option>All</option><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select><select aria-label="Filter by language" value={projectLanguageFilter} onChange={event => setProjectLanguageFilter(event.target.value)}><option>All</option>{Array.from(new Set(projects.map(project => project.language))).map(language => <option key={language}>{language}</option>)}</select><select aria-label="Sort projects" value={projectSort} onChange={event => setProjectSort(event.target.value)}><option value="updated">Recently updated</option><option value="name">Name A–Z</option><option value="due">Due date</option></select></div>
               {filteredProjects.length ? <div className="project-grid">{filteredProjects.map(project => <article className="project-card" key={project.id}><div className="project-card-top"><span className="project-symbol"><Code2 size={20}/></span><button className="icon-button" onClick={() => { if(window.confirm('Delete '+project.name+'? This cannot be undone.')) setProjects(current => current.filter(item => item.id !== project.id)); }} aria-label={'Delete '+project.name}><Trash2 size={16}/></button></div><h3>{project.name}</h3><p>{project.notes || 'No notes added yet. Open the project to add details and tasks.'}</p><div className="project-card-meta"><span className="language-tag">{project.language}</span><span className="folder-chip"><FolderGit2 size={11}/>{project.folder || 'General'}</span><span className="priority-pill">{project.priority || 'Medium'}</span>{project.dueDate && <span className="project-due">Due {new Date(project.dueDate+'T00:00:00').toLocaleDateString()}</span>}</div>{(project.tags || []).length > 0 && <div className="project-tags">{project.tags!.map(tag => <span key={tag}>{tag}</span>)}</div>}<div className="project-progress-track"><span style={{width:(project.progress || 0)+'%'}}/></div><div className="project-card-bottom"><span className="project-progress-label">{project.progress || 0}% complete · {(project.tasks || []).filter(task => task.done).length}/{(project.tasks || []).length} tasks</span><button className="copy-button" onClick={() => setSelectedProjectId(project.id)}>Open project <ArrowUpRight size={14}/></button></div><div className="project-card-status"><button className="copy-button" onClick={() => updateProject(project.id, {archived: !project.archived})}>{project.archived ? 'Restore' : 'Archive'}</button><select aria-label={'Status for '+project.name} value={project.status} onChange={event => updateProject(project.id, {status:event.target.value, progress:event.target.value === 'Done' ? 100 : project.progress})}><option>Planned</option><option>In progress</option><option>On hold</option><option>Done</option></select></div></article>)}</div> : <div className="empty-projects"><FolderGit2 size={30}/><h3>{projects.length ? 'No matching projects' : 'No projects yet'}</h3><p>{projects.length ? 'Try changing your search or filters.' : 'Add a project to start organizing your work.'}</p>{!projects.length && <button className="generate-button" onClick={() => setShowProjectForm(true)}><Plus size={16}/> Create a project</button>}</div>}
