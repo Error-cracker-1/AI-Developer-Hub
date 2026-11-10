@@ -1412,3 +1412,10 @@ button:disabled {
 .github-stats{color:#a5efbd;font-size:10px}
 .github-activity a{display:grid;gap:4px;padding-top:8px;border-top:1px solid #252d38;color:#dce6e0;text-decoration:none;overflow-wrap:anywhere}
 .github-activity a small{color:#8792a5}
+
+.folder-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border:1px solid #35443d;border-radius:6px;color:#a5efbd;background:#142019;font:10px 'DM Mono',monospace}
+.project-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.project-tags span{padding:4px 7px;border:1px solid #303847;border-radius:5px;color:#aebbd0;background:#141b25;font-size:9px}
+.archive-toggle.active{border-color:#6eaf89;color:#a5efbd}
+.project-archive-action{width:100%;margin-top:16px}
+@media(max-width:760px){.project-toolbar{grid-template-columns:1fr 1fr}.project-toolbar .history-search{grid-column:1/-1}}
