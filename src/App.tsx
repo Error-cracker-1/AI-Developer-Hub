@@ -28,7 +28,6 @@ export default function App() {
   const [history, setHistory] = useState<string[]>([]);
   const [redoHistory, setRedoHistory] = useState<string[]>([]);
   const [cameraOn, setCameraOn] = useState(false);
-  const [scanFace, setScanFace] = useState<Face>('F');
   const [scannedFaces, setScannedFaces] = useState<Face[]>([]);
   const [cameraError, setCameraError] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -110,7 +109,7 @@ export default function App() {
     clearSolution();
     setStatus('Change restored.');
   };
-  const reset = () => { track('Cube reset'); setFaces(emptyFaces()); setHistory([]); setRedoHistory([]); clearSolution(); setScramble(''); setError(''); setStatus('Cube reset to solved state.'); };
+  const reset = () => { track('Cube reset'); setFaces(emptyFaces()); setHistory([]); setRedoHistory([]); setScannedFaces([]); clearSolution(); setScramble(''); setError(''); setCameraError(''); setStatus('Cube reset to solved state.'); };
   const scrambleCube = () => {
     const moves = randomScramble();
     const state = applyMoves(SOLVED, moves);
@@ -199,7 +198,6 @@ export default function App() {
       setCameraError('Could not confidently identify the centre colour. Move the cube closer, reduce glare, improve lighting, and capture again.');
       return;
     }
-    setScanFace(detectedFace);
     setHistory(items => [...items.slice(-29), toString(faces)]); clearSolution();
     setFaces(previous => ({ ...previous, [detectedFace]: samples }));
     setScannedFaces(previous => previous.includes(detectedFace) ? previous : [...previous, detectedFace]);
@@ -208,7 +206,7 @@ export default function App() {
       ? `${label}. Captured with ${uncertain} low-confidence sticker(s). Improve lighting and review the sticker map. ${scannedFaces.includes(detectedFace) ? 'This face was already scanned, so its capture was replaced.' : ''}`
       : `${label}. Face captured. ${Math.min(6, scannedFaces.includes(detectedFace) ? scannedFaces.length : scannedFaces.length + 1)}/6 faces scanned. Review the sticker map before solving.`);
   };
-  const fillSolved = () => { setHistory(items => [...items.slice(-29), toString(faces)]); setFaces(emptyFaces()); clearSolution(); setError(''); setStatus('Solved color layout restored.'); };
+  const fillSolved = () => { setHistory(items => [...items.slice(-29), toString(faces)]); setFaces(emptyFaces()); setScannedFaces([]); clearSolution(); setError(''); setStatus('Solved color layout restored.'); };
   const copyAlgorithm = async () => { try { await navigator.clipboard.writeText(algorithm); setStatus('Algorithm copied to clipboard.'); } catch { setStatus('Select and copy the algorithm shown below.'); } };
 
   const downloadAlgorithm = () => {
@@ -240,7 +238,7 @@ export default function App() {
           <h3 className="subheading">Sticker map <span>Tap a tile to cycle colors</span></h3><CubeNet faces={displayedFaces} onSticker={paintSticker} disabled={busy || Boolean(solution.length)} />
           <div className={validation.valid ? 'validation-box good' : 'validation-box'}><strong>{validation.valid ? '✓ Color counts look balanced' : '⚠ Check cube colors'}</strong><div className="count-row">{FACE_ORDER.map(face => <span key={face}><i style={{ background: PALETTE[face].color }} />{face}: {validation.counts[face]}/9</span>)}</div>{!validation.valid && <p>Every color needs nine stickers and centers must stay on their matching faces. A valid count does not guarantee every physical cube arrangement is reachable.</p>}</div>
           {featureFlags.camera_scan && <section className="scan-card"><div className="scan-heading"><div><h3>📷 Camera color assist</h3><p>Capture one face at a time, then review it in the sticker map.</p></div>{!cameraOn ? <button className="secondary-button" onClick={startCamera}>Open camera</button> : <button className="text-button" onClick={stopCamera}>Turn off</button>}</div>
-            {cameraOn && <><div className="scan-progress" aria-label={`${scannedFaces.length} of 6 faces scanned`}><div className="scan-progress-top"><span>Centre-colour auto-detection</span><b>{scannedFaces.length}/6 faces</b></div><div className="scan-progress-bar"><span style={{width:`${scannedFaces.length / 6 * 100}%`}} /></div><div className="scan-face-chips">{FACE_ORDER.map(face => <span key={face} className={scannedFaces.includes(face) ? 'scanned' : ''}><i style={{background:PALETTE[face].color}} />{FACE_NAMES[face]}</span>)}</div></div><label className="field-label" htmlFor="scan-face">Fallback face (used only if centre detection is uncertain)</label><select id="scan-face" value={scanFace} onChange={event => setScanFace(event.target.value as Face)}>{FACE_ORDER.map(face => <option value={face} key={face}>{FACE_NAMES[face]} ({face})</option>)}</select><div className="camera-frame"><video ref={videoRef} autoPlay muted playsInline /><div className="scan-guide">{Array.from({ length: 9 }, (_, i) => <i key={i} />)}</div></div><button className="primary-button full-button" onClick={scanFaceNow}>◎ Auto-detect side & capture 9 colors</button><button className="secondary-button full-button" onClick={() => { setScannedFaces([]); setCameraError('Scan progress cleared. Existing sticker colors were kept.'); }}>Reset scan progress</button></>}
+            {cameraOn && <><div className="scan-progress" aria-label={`${scannedFaces.length} of 6 faces scanned`}><div className="scan-progress-top"><span>Centre-colour auto-detection</span><b>{scannedFaces.length}/6 faces</b></div><div className="scan-progress-bar"><span style={{width:`${scannedFaces.length / 6 * 100}%`}} /></div><div className="scan-face-chips">{FACE_ORDER.map(face => <span key={face} className={scannedFaces.includes(face) ? 'scanned' : ''}><i style={{background:PALETTE[face].color}} />{FACE_NAMES[face]}</span>)}</div></div><p className="scan-auto-hint">Point any face toward the camera. TwistLab reads the centre sticker and assigns the face automatically.</p><div className="camera-frame"><video ref={videoRef} autoPlay muted playsInline /><div className="scan-guide">{Array.from({ length: 9 }, (_, i) => <i key={i} />)}</div></div><button className="primary-button full-button" onClick={scanFaceNow}>◎ Auto-detect side & capture 9 colors</button><button className="secondary-button full-button" onClick={() => { setScannedFaces([]); setCameraError('Scan progress cleared. Existing sticker colors were kept.'); }}>Reset scan progress</button></>}
             {cameraError && <p className="notice" role="status">{cameraError}</p>}
             <p className="privacy-note">Camera frames are sampled locally in this browser and are not uploaded. Lighting can misread colors.</p>
           </section>}
