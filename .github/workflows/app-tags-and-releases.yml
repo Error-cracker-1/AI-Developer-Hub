@@ -1,0 +1,266 @@
+name: App Tags and Releases
+
+on:
+  push:
+    tags:
+      - "ai-hub-v*"
+      - "twistlab-v*"
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Choose which application to release"
+        required: true
+        type: choice
+        options:
+          - ai-developer-hub
+          - twistlab
+      tag_name:
+        description: "Version tag (example: ai-hub-v1.0.0 or twistlab-v1.0.0)"
+        required: true
+        type: string
+      gemini_model:
+        description: "Gemini model for AI-generated release notes"
+        required: true
+        type: choice
+        default: gemini-3.8-flash
+        options:
+          - gemini-3.8-flash
+          - gemini-3.5-flash-lite
+          - gemini-3.1-flash-lite
+          - gemini-3.1-pro-preview
+      release_title:
+        description: "Optional title override (leave blank to generate with Gemini)"
+        required: false
+        type: string
+      release_notes:
+        description: "Optional Markdown notes override (leave blank to generate with Gemini)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the selected application branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.app == 'ai-developer-hub' && 'deploy-vercel' || github.event_name == 'workflow_dispatch' && inputs.app == 'twistlab' && 'rubiks-cube-solver' || github.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Resolve application, branch, tag, and model
+        id: release_target
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_APP: ${{ inputs.app }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+          INPUT_MODEL: ${{ inputs.gemini_model }}
+          CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            APP="$INPUT_APP"
+            TAG_NAME="$INPUT_TAG"
+            MODEL="${INPUT_MODEL:-gemini-3.8-flash}"
+          else
+            TAG_NAME="$REF_NAME"
+            MODEL="${CONFIGURED_MODEL:-gemini-3.8-flash}"
+            case "$TAG_NAME" in
+              ai-hub-v*) APP="ai-developer-hub" ;;
+              twistlab-v*) APP="twistlab" ;;
+              *) echo "::error::Unsupported release tag prefix: $TAG_NAME"; exit 1 ;;
+            esac
+          fi
+
+          case "$APP" in
+            ai-developer-hub)
+              TARGET_BRANCH="deploy-vercel"
+              TAG_PREFIX="ai-hub-v"
+              APP_LABEL="AI Developer Hub"
+              ;;
+            twistlab)
+              TARGET_BRANCH="rubiks-cube-solver"
+              TAG_PREFIX="twistlab-v"
+              APP_LABEL="TwistLab"
+              ;;
+            *) echo "::error::Unknown application: $APP"; exit 1 ;;
+          esac
+
+          if [[ "$TAG_NAME" != "$TAG_PREFIX"* ]]; then
+            echo "::error::Tag '$TAG_NAME' must start with '$TAG_PREFIX'."
+            exit 1
+          fi
+          if [[ ! "$TAG_NAME" =~ ^[A-Za-z0-9._-]+$ || "$TAG_NAME" == *..* || "$TAG_NAME" == *.lock ]]; then
+            echo "::error::Invalid tag name."
+            exit 1
+          fi
+          case "$MODEL" in
+            gemini-3.8-flash|gemini-3.5-flash-lite|gemini-3.1-flash-lite|gemini-3.1-pro-preview) ;;
+            *) echo "::error::Unsupported Gemini model: $MODEL"; exit 1 ;;
+          esac
+
+          git fetch origin "$TARGET_BRANCH"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$TARGET_BRANCH"; then
+              echo "::error::Tag commit is not contained in the selected production branch ($TARGET_BRANCH)."
+              exit 1
+            fi
+            if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::A release already exists for $TAG_NAME; refusing to overwrite it."
+              exit 1
+            fi
+          else
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+              echo "::error::Tag '$TAG_NAME' already exists. Choose a new version."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "app=$APP"
+            echo "target_branch=$TARGET_BRANCH"
+            echo "tag_name=$TAG_NAME"
+            echo "model=$MODEL"
+            echo "app_label=$APP_LABEL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies and build selected application
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+      - name: Package source and production build
+        id: package
+        shell: bash
+        env:
+          APP: ${{ steps.release_target.outputs.app }}
+          APP_LABEL: ${{ steps.release_target.outputs.app_label }}
+          TARGET_BRANCH: ${{ steps.release_target.outputs.target_branch }}
+          TAG_NAME: ${{ steps.release_target.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/release-package"
+          ZIP="$RUNNER_TEMP/${TAG_NAME}-source-and-build.zip"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          git archive HEAD | tar -x -C "$STAGE"
+          cp -R dist "$STAGE/dist"
+          cat > "$STAGE/RELEASE-MANIFEST.txt" <<EOF
+          Application: $APP_LABEL
+          Branch: $TARGET_BRANCH
+          Tag: $TAG_NAME
+          Source commit: $(git rev-parse HEAD)
+          Build: npm run build
+          EOF
+          (cd "$STAGE" && zip -qr "$ZIP" .)
+          test -s "$ZIP"
+          echo "zip_path=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release title and notes with selected Gemini model
+        id: release_text
+        shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          MODEL: ${{ steps.release_target.outputs.model }}
+          TAG_NAME: ${{ steps.release_target.outputs.tag_name }}
+          APP_LABEL: ${{ steps.release_target.outputs.app_label }}
+          RELEASE_TITLE_INPUT: ${{ inputs.release_title }}
+          RELEASE_NOTES_INPUT: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          TITLE_INPUT="$RELEASE_TITLE_INPUT"
+          NOTES_INPUT="$RELEASE_NOTES_INPUT"
+          if [[ -n "$TITLE_INPUT" && -n "$NOTES_INPUT" ]]; then
+            printf '%s' "$TITLE_INPUT" > "$RUNNER_TEMP/release-title.txt"
+            printf '%s' "$NOTES_INPUT" > "$RUNNER_TEMP/release-notes.md"
+          else
+            API_KEY="${GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}"
+            if [[ -z "$API_KEY" ]]; then
+              echo "::error::Set GEMINI_API_KEY or GOOGLE_API_KEY in repository Actions secrets, or provide both title and notes manually."
+              exit 1
+            fi
+
+            PREVIOUS_TAG="$(git tag --merged HEAD --sort=-version:refname | grep -E "^(${TAG_NAME%%-v*}-v)" | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
+            if [[ -n "$PREVIOUS_TAG" ]]; then
+              COMMITS="$(git log --pretty=format:'- %s (%h)' "$PREVIOUS_TAG"..HEAD)"
+              CHANGES="$(git diff --stat "$PREVIOUS_TAG"..HEAD)"
+              RANGE="$PREVIOUS_TAG..$TAG_NAME"
+            else
+              COMMITS="$(git log --pretty=format:'- %s (%h)' -n 50)"
+              CHANGES="$(git show --stat --oneline --summary HEAD)"
+              RANGE="No previous application release tag was found; notes use recent history."
+            fi
+            [[ -n "$COMMITS" ]] || COMMITS="No commit messages available."
+            [[ -n "$CHANGES" ]] || CHANGES="No file change summary available."
+
+            PROMPT="$(printf '%s\n' \
+              "Write accurate GitHub release notes for $APP_LABEL." \
+              "Tag: $TAG_NAME" \
+              "Comparison: $RANGE" \
+              "Use only the evidence below. Never invent features, fixes, tests, performance results, security claims, contributors, or migration steps." \
+              "Explain user-visible changes first. Use concise Markdown headings and bullets. Include only evidence-supported sections such as Highlights, Improvements, Fixes, Technical Changes, Build/Test Status, and Upgrade Notes." \
+              "If evidence is insufficient, say so or omit the claim. Do not claim the build passed unless the workflow's build step succeeded; it has." \
+              "Return ONLY valid JSON with exactly two non-empty string properties: title and description. Description must be GitHub-flavored Markdown." \
+              "" \
+              "Commits:" \
+              "$COMMITS" \
+              "" \
+              "Changed files summary:" \
+              "$CHANGES")"
+            jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}}' > "$RUNNER_TEMP/gemini-request.json"
+            HTTP_CODE="$(curl -sS -o "$RUNNER_TEMP/gemini-response.json" -w '%{http_code}' \
+              -H 'Content-Type: application/json' \
+              -X POST "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$API_KEY" \
+              --data-binary @"$RUNNER_TEMP/gemini-request.json")"
+            if [[ "$HTTP_CODE" != 2* ]]; then
+              echo "::error::Gemini request failed with HTTP $HTTP_CODE using $MODEL. Choose another model or check the API key/model access."
+              jq -r '.error.message // "No API error details returned."' "$RUNNER_TEMP/gemini-response.json" || true
+              exit 1
+            fi
+            AI_JSON="$(jq -er '.candidates[0].content.parts | map(.text // "") | join("")' "$RUNNER_TEMP/gemini-response.json")"
+            AI_TITLE="$(printf '%s' "$AI_JSON" | jq -er '.title | strings | select(length > 0)')"
+            AI_NOTES="$(printf '%s' "$AI_JSON" | jq -er '.description | strings | select(length > 0)')"
+            printf '%s' "${TITLE_INPUT:-$AI_TITLE}" > "$RUNNER_TEMP/release-title.txt"
+            printf '%s' "${NOTES_INPUT:-$AI_NOTES}" > "$RUNNER_TEMP/release-notes.md"
+          fi
+          echo "Prepared release metadata with model: $MODEL"
+
+      - name: Create and push annotated tag for manual releases
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          TAG_NAME: ${{ steps.release_target.outputs.tag_name }}
+          APP_LABEL: ${{ steps.release_target.outputs.app_label }}
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG_NAME" -m "$APP_LABEL $TAG_NAME"
+          git push origin "refs/tags/$TAG_NAME"
+
+      - name: Create draft release and upload build bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.release_target.outputs.tag_name }}
+          TARGET_BRANCH: ${{ steps.release_target.outputs.target_branch }}
+          ZIP_PATH: ${{ steps.package.outputs.zip_path }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG_NAME" "$ZIP_PATH#Application source and production build" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$(cat "$RUNNER_TEMP/release-title.txt")" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --target "$TARGET_BRANCH" \
+            --draft
+          gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
