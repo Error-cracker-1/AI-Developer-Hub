@@ -173,6 +173,7 @@ export default function App() {
     });
     const samples: Face[] = [];
     let uncertain = 0;
+    let centerConfident = false;
     for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
       // Ignore sticker borders and specular highlights: use the median of a small
       // 7x7 patch around each cell center rather than one pixel.
@@ -186,28 +187,18 @@ export default function App() {
       const median = (values: number[]) => values.sort((x, y) => x - y)[Math.floor(values.length / 2)];
       const lab = toLab(median(channels[0]), median(channels[1]), median(channels[2]));
       const ranked = targets.map(target => ({ face: target.face, distance: Math.hypot(lab[0]-target.lab[0], lab[1]-target.lab[1], lab[2]-target.lab[2]) })).sort((x,y) => x.distance-y.distance);
-      if (ranked[0].distance > 32 || ranked[1].distance - ranked[0].distance < 5) uncertain++;
+      const confident = ranked[0].distance <= 32 && ranked[1].distance - ranked[0].distance >= 5;
+      if (!confident) uncertain++;
+      if (row === 1 && col === 1) centerConfident = confident;
       samples.push(ranked[0].face);
     }
-    // The centre sticker identifies the physical face. The selected dropdown is only a fallback;
-    // a confident centre-color match always wins so users can scan faces in any order.
-    const centerIndex = 4;
-    const centerX = Math.round(360 * .50);
-    const centerY = Math.round(360 * .50);
-    const centerChannels: number[][] = [[], [], []];
-    for (let dy = -9; dy <= 9; dy += 3) for (let dx = -9; dx <= 9; dx += 3) {
-      const pixel = context.getImageData(Math.max(0, Math.min(359, centerX + dx)), Math.max(0, Math.min(359, centerY + dy)), 1, 1).data;
-      centerChannels.forEach((channel, index) => channel.push(pixel[index]));
-    }
-    const centerLab = toLab(median(centerChannels[0]), median(centerChannels[1]), median(centerChannels[2]));
-    const centerMatches = targets.map(target => ({ face: target.face, distance: Math.hypot(centerLab[0]-target.lab[0], centerLab[1]-target.lab[1], centerLab[2]-target.lab[2]) })).sort((a,b) => a.distance-b.distance);
-    const detectedFace = centerMatches[0].face;
-    const centerConfidence = centerMatches[0].distance <= 32 && centerMatches[1].distance - centerMatches[0].distance >= 5;
-    if (!centerConfidence) {
+    // The centre sticker identifies the physical face. A confident centre-colour match
+    // overrides the dropdown so the six sides can be scanned in any order.
+    const detectedFace = samples[4];
+    if (!centerConfident) {
       setCameraError('Could not confidently identify the centre colour. Move the cube closer, reduce glare, improve lighting, and capture again.');
       return;
     }
-    samples[centerIndex] = detectedFace;
     setScanFace(detectedFace);
     setHistory(items => [...items.slice(-29), toString(faces)]); clearSolution();
     setFaces(previous => ({ ...previous, [detectedFace]: samples }));
