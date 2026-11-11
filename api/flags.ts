@@ -5,6 +5,7 @@ const defaults = {
   camera_scan: true,
   cube_history: true,
   fullscreen_controls: true,
+  cube_assistant: false,
 } as const;
 
 const vercelKeys = {
@@ -12,6 +13,7 @@ const vercelKeys = {
   camera_scan: 'camera-scan',
   cube_history: 'cube-history',
   fullscreen_controls: 'fullscreen-controls',
+  cube_assistant: 'cube-assistant',
 } as const;
 
 type FlagKey = keyof typeof defaults;

@@ -5,6 +5,7 @@ export const defaultFeatureFlags = {
   camera_scan: true,
   cube_history: true,
   fullscreen_controls: true,
+  cube_assistant: false,
 } as const;
 
 export type FeatureFlagValues = {
