@@ -766,6 +766,8 @@ function App() {
             <span className="secure-pill">
               <span /> Private workspace
             </span>
+            <a className="secondary-button" href="https://github.com/Error-cracker-1/AI-Developer-Hub/issues/new/choose" target="_blank" rel="noopener noreferrer" aria-label="Get support or report an issue on GitHub"><MessageCircle size={14} /> Support</a>
+            <a className="secondary-button" href="https://github.com/Error-cracker-1/AI-Developer-Hub/tree/deploy-vercel" target="_blank" rel="noopener noreferrer" aria-label="View AI Developer Hub source code on the deploy-vercel branch"><Github size={14} /> Show code</a>
             <div className="top-avatar">D</div>
           </div>
         </header>
