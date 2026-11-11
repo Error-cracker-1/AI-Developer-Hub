@@ -156,26 +156,47 @@ export default function App() {
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) { setCameraError('Could not read this camera frame.'); return; }
     context.drawImage(video, sx, sy, side, side, 0, 0, 360, 360);
-    const toLab = (r: number, g: number, b: number) => {
-      const linear = (v: number) => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
-      const R = linear(r), G = linear(g), B = linear(b);
-      let x = (R * .4124 + G * .3576 + B * .1805) / .95047;
-      let y = R * .2126 + G * .7152 + B * .0722;
-      let z = (R * .0193 + G * .1192 + B * .9505) / 1.08883;
-      const f = (v: number) => v > .008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116;
-      x = f(x); y = f(y); z = f(z);
-      return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+    // Use HSV hue for chromatic stickers: unlike distance to ideal RGB/Lab
+    // swatches, hue is comparatively stable under exposure changes. This also
+    // separates orange from red and gives green a much wider recognition band.
+    const classifyColor = (r: number, g: number, b: number): { face: Face; confident: boolean; hue: number; saturation: number; value: number } => {
+      const rn = r / 255, gn = g / 255, bn = b / 255;
+      const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn), delta = max - min;
+      let hue = 0;
+      if (delta > 0) {
+        if (max === rn) hue = 60 * (((gn - bn) / delta) % 6);
+        else if (max === gn) hue = 60 * ((bn - rn) / delta + 2);
+        else hue = 60 * ((rn - gn) / delta + 4);
+      }
+      if (hue < 0) hue += 360;
+      const saturation = max === 0 ? 0 : delta / max;
+      const value = max;
+      // White has low chroma; reject dark/grey frames instead of guessing.
+      if (saturation < 0.20) {
+        return { face: 'U', confident: saturation < 0.16 && value > 0.42, hue, saturation, value };
+      }
+      if (value < 0.16) return { face: 'F', confident: false, hue, saturation, value };
+      // Hue bands are intentionally asymmetric: red wraps around 0°, orange
+      // occupies its own band, and green gets a broad allowance for camera shifts.
+      const bands: { face: Face; min: number; max: number }[] = [
+        { face: 'R', min: 345, max: 360 }, { face: 'R', min: 0, max: 12 },
+        { face: 'L', min: 12, max: 42 },
+        { face: 'D', min: 42, max: 78 },
+        { face: 'F', min: 78, max: 170 },
+        { face: 'B', min: 170, max: 270 }
+      ];
+      const band = bands.find(item => hue >= item.min && hue < item.max);
+      if (!band) return { face: 'F', confident: false, hue, saturation, value };
+      const margin = Math.min(hue - band.min, band.max - hue);
+      const confident = saturation >= 0.24 && value >= 0.20 && margin >= 3;
+      return { face: band.face, confident, hue, saturation, value };
     };
-    const targets = FACE_ORDER.map(face => {
-      const hex = PALETTE[face].color.slice(1);
-      return { face, lab: toLab(parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)) };
-    });
     const samples: Face[] = [];
     let uncertain = 0;
     let centerConfident = false;
+    let centerHue = 0;
     for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
-      // Ignore sticker borders and specular highlights: use the median of a small
-      // 7x7 patch around each cell center rather than one pixel.
+      // Median RGB from a 7x7 patch avoids sticker borders and isolated glare.
       const cx = Math.round(360 * (.17 + col * .33));
       const cy = Math.round(360 * (.17 + row * .33));
       const channels: number[][] = [[], [], []];
@@ -184,18 +205,16 @@ export default function App() {
         channels.forEach((channel, index) => channel.push(pixel[index]));
       }
       const median = (values: number[]) => values.sort((x, y) => x - y)[Math.floor(values.length / 2)];
-      const lab = toLab(median(channels[0]), median(channels[1]), median(channels[2]));
-      const ranked = targets.map(target => ({ face: target.face, distance: Math.hypot(lab[0]-target.lab[0], lab[1]-target.lab[1], lab[2]-target.lab[2]) })).sort((x,y) => x.distance-y.distance);
-      const confident = ranked[0].distance <= 32 && ranked[1].distance - ranked[0].distance >= 5;
-      if (!confident) uncertain++;
-      if (row === 1 && col === 1) centerConfident = confident;
-      samples.push(ranked[0].face);
+      const result = classifyColor(median(channels[0]), median(channels[1]), median(channels[2]));
+      if (!result.confident) uncertain++;
+      if (row === 1 && col === 1) { centerConfident = result.confident; centerHue = result.hue; }
+      samples.push(result.face);
     }
     // The centre sticker identifies the physical face. A confident centre-colour match
     // overrides the dropdown so the six sides can be scanned in any order.
     const detectedFace = samples[4];
     if (!centerConfident) {
-      setCameraError('Could not confidently identify the centre colour. Move the cube closer, reduce glare, improve lighting, and capture again.');
+      setCameraError('Centre colour is ambiguous (hue ' + Math.round(centerHue) + '°). Keep the centre sticker inside the middle guide, avoid glare, and use bright neutral lighting. Red and orange are separated by hue; green has a wider detection range.');
       return;
     }
     setHistory(items => [...items.slice(-29), toString(faces)]); clearSolution();
