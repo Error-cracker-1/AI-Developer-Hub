@@ -60,6 +60,7 @@ jobs:
           INPUT_TAG: ${{ inputs.tag_name }}
           INPUT_MODEL: ${{ inputs.gemini_model }}
           CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
+          GH_TOKEN: ${{ github.token }}
           PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         shell: bash
