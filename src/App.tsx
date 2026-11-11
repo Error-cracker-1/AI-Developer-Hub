@@ -195,6 +195,8 @@ function readProjects(): Project[] {
 
 function App() {
   const featureFlags = useFeatureFlags();
+  const APP_VERSION = __APP_VERSION__;
+  const APP_COMMIT = __APP_COMMIT__;
   const [mode, setMode] = useState<Mode>('Explain code');
   const [language, setLanguage] = useState('Python');
   const [task, setTask] = useState('');
@@ -1266,7 +1268,16 @@ function App() {
             )}
           </div>
         ) : null}
-        <footer className="footer">
+                <section className="community-panel" aria-labelledby="community-title">
+          <div className="community-heading"><div><span className="eyebrow"><MessageCircle size={13}/> COMMUNITY & RESOURCES</span><h2 id="community-title">Need a hand? <span>We're one click away.</span></h2><p>Report a problem, suggest an improvement, or explore the source and documentation.</p></div><div className="community-version"><span>APP VERSION</span><strong>{APP_VERSION}</strong><small>Commit <code>{APP_COMMIT.slice(0, 7)}</code></small></div></div>
+          <div className="community-grid">
+            <a className="community-card support-card" href={"https://github.com/Error-cracker-1/AI-Developer-Hub/issues/new?title=%5BBug%5D%20AI%20Developer%20Hub%3A%20&body=Application%3A%20AI%20Developer%20Hub%0AVersion%3A%201.0.0%0AProduction%20branch%3A%20deploy-vercel%0ABuild%20commit%3A%20__APP_COMMIT__%0A%0A%23%23%23%20What%20happened%3F%0A%0A%23%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%23%20Expected%20behaviour%0A%0A%23%23%23%20Actual%20behaviour%0A%0A%23%23%23%20Device%20%2F%20browser%0A".replace("__APP_COMMIT__", APP_COMMIT)} target="_blank" rel="noopener noreferrer"><span className="community-icon"><MessageCircle size={19}/></span><strong>Report a bug</strong><p>Open a GitHub issue with app version, branch and build details prefilled.</p><span className="community-link">Get support <ArrowUpRight size={14}/></span></a>
+            <a className="community-card" href={"https://github.com/Error-cracker-1/AI-Developer-Hub/issues/new?title=%5BFeature%5D%20AI%20Developer%20Hub%3A%20&body=Application%3A%20AI%20Developer%20Hub%0AVersion%3A%201.0.0%0AProduction%20branch%3A%20deploy-vercel%0ABuild%20commit%3A%20__APP_COMMIT__%0A%0A%23%23%23%20What%20would%20you%20like%20to%20improve%3F%0A%0A%23%23%23%20Why%20would%20this%20help%3F%0A%0A%23%23%23%20Any%20examples%20or%20references%3F%0A".replace("__APP_COMMIT__", APP_COMMIT)} target="_blank" rel="noopener noreferrer"><span className="community-icon"><Sparkles size={19}/></span><strong>Share feedback</strong><p>Suggest features and improvements to help shape the next release.</p><span className="community-link">Send feedback <ArrowUpRight size={14}/></span></a>
+            <a className="community-card" href="https://github.com/Error-cracker-1/AI-Developer-Hub/blob/deploy-vercel/README.md" target="_blank" rel="noopener noreferrer"><span className="community-icon"><BookOpen size={19}/></span><strong>Documentation</strong><p>Read setup instructions, feature notes and project guidance.</p><span className="community-link">Read README <ArrowUpRight size={14}/></span></a>
+            <a className="community-card" href="https://github.com/Error-cracker-1/AI-Developer-Hub/tree/deploy-vercel" target="_blank" rel="noopener noreferrer"><span className="community-icon"><Github size={19}/></span><strong>Show code</strong><p>Browse the AI Developer Hub source on its production branch.</p><span className="community-link">Explore source <ArrowUpRight size={14}/></span></a>
+          </div>
+        </section>
+<footer className="footer">
           <span>
             DEVHUB <b>•</b> BUILT FOR BUILDERS
           </span>
