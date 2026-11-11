@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "ai-hub-v*"
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches:
       - deploy-vercel
@@ -33,13 +33,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ai-hub-vrelease-${{ github.event.pull_request.number || github.ref }}
+  group: ai-hub-release
   cancel-in-progress: false
 
 jobs:
   release:
     if: >-
-      github.event_name != 'pull_request' ||
+      github.event_name != 'pull_request_target' ||
       (github.event.pull_request.merged == true &&
        (contains(github.event.pull_request.labels.*.name, 'release:major') ||
         contains(github.event.pull_request.labels.*.name, 'release:minor') ||
@@ -49,7 +49,7 @@ jobs:
       - name: Check out the exact production source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || (github.event_name == 'workflow_dispatch' && 'deploy-vercel' || github.ref) }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || (github.event_name == 'workflow_dispatch' && 'deploy-vercel' || github.ref) }}
           fetch-depth: 0
 
       - name: Resolve version, model, and release source
@@ -207,7 +207,7 @@ jobs:
           GENERATED=false
           if [[ -n "$API_KEY" ]]; then
             PROMPT="$(printf '%s\n' "Create concise, accurate GitHub release notes for $APP." "Tag: $TAG_NAME" 'Use only the evidence below. Do not invent features, fixes, metrics, tests, or migration steps. Return only valid JSON with non-empty string properties title and description. The description must be Markdown.' '' 'Commits:' "$COMMITS" '' 'Changed files:' "$CHANGES")"
-            jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}}' > "$RUNNER_TEMP/request.json"
+            jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}],generationConfig:{responseMimeType:"application/json"}}' > "$RUNNER_TEMP/request.json"
             CODE="$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -H 'Content-Type: application/json' -X POST "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$API_KEY" --data-binary @"$RUNNER_TEMP/request.json")"
             if [[ "$CODE" == 2* ]] && jq -e '.candidates[0].content.parts | map(.text // "") | join("") | fromjson | (.title | type == "string" and length > 0) and (.description | type == "string" and length > 0)' "$RUNNER_TEMP/response.json" >/dev/null 2>&1; then
               RESULT="$(jq -er '.candidates[0].content.parts | map(.text // "") | join("") | fromjson' "$RUNNER_TEMP/response.json")"
