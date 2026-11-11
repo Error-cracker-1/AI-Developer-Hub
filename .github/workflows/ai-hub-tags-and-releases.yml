@@ -95,7 +95,7 @@ jobs:
             fi
 
             git fetch --tags --force origin
-            git fetch origin "$PRODUCTION_BRANCH"
+            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
             SOURCE_SHA="$(git rev-parse HEAD)"
             if ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/$PRODUCTION_BRANCH"; then
               echo "::error::Merged PR commit is not present on $PRODUCTION_BRANCH."
@@ -135,7 +135,7 @@ jobs:
               exit 1
             fi
             git fetch --tags --force origin
-            git fetch origin "$PRODUCTION_BRANCH"
+            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
             if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
               echo "::error::Tag '$TAG_NAME' does not exist."
               exit 1
