@@ -69,3 +69,16 @@
 .solver-face-counts b{color:var(--mint);font-family:'DM Mono',monospace}
 .solver-insights>p{font-size:10px;line-height:1.7;color:#899bb1;margin:13px 0 0}
 @media(max-width:480px){.solver-insights{padding:12px}.solver-metrics{gap:5px}.solver-metrics>div{padding:8px}.solver-metrics strong{font-size:18px}.solver-metrics small{font-size:8px}}
+
+/* Camera scan progress and centre-colour feedback */
+.scan-progress{margin:14px 0 10px;padding:11px;border:1px solid #2b4050;border-radius:8px;background:#101b27}
+.scan-progress-top{display:flex;justify-content:space-between;gap:10px;color:#a9b8cc;font-size:10px}
+.scan-progress-top b{color:var(--mint);font:10px 'DM Mono',monospace}
+.scan-progress-bar{height:5px;margin:9px 0 10px;border-radius:8px;background:#29384a;overflow:hidden}
+.scan-progress-bar span{display:block;height:100%;border-radius:8px;background:var(--mint);transition:width .2s ease}
+.scan-face-chips{display:flex;flex-wrap:wrap;gap:7px}
+.scan-face-chips span{display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid #2b394b;border-radius:20px;color:#7f90a8;font-size:9px}
+.scan-face-chips span.scanned{border-color:#326653;color:#a5ebcf;background:#143027}
+.scan-face-chips i{width:8px;height:8px;border-radius:50%;border:1px solid #ffffff55}
+.scan-card .full-button+.full-button{margin-top:7px}
+@media(prefers-reduced-motion:reduce){.scan-progress-bar span{transition:none}}
