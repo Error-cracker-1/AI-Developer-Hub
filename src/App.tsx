@@ -29,6 +29,7 @@ export default function App() {
   const [redoHistory, setRedoHistory] = useState<string[]>([]);
   const [cameraOn, setCameraOn] = useState(false);
   const [scanFace, setScanFace] = useState<Face>('F');
+  const [scannedFaces, setScannedFaces] = useState<Face[]>([]);
   const [cameraError, setCameraError] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -188,12 +189,33 @@ export default function App() {
       if (ranked[0].distance > 32 || ranked[1].distance - ranked[0].distance < 5) uncertain++;
       samples.push(ranked[0].face);
     }
-    samples[4] = scanFace;
+    // The centre sticker identifies the physical face. The selected dropdown is only a fallback;
+    // a confident centre-color match always wins so users can scan faces in any order.
+    const centerIndex = 4;
+    const centerX = Math.round(360 * .50);
+    const centerY = Math.round(360 * .50);
+    const centerChannels: number[][] = [[], [], []];
+    for (let dy = -9; dy <= 9; dy += 3) for (let dx = -9; dx <= 9; dx += 3) {
+      const pixel = context.getImageData(Math.max(0, Math.min(359, centerX + dx)), Math.max(0, Math.min(359, centerY + dy)), 1, 1).data;
+      centerChannels.forEach((channel, index) => channel.push(pixel[index]));
+    }
+    const centerLab = toLab(median(centerChannels[0]), median(centerChannels[1]), median(centerChannels[2]));
+    const centerMatches = targets.map(target => ({ face: target.face, distance: Math.hypot(centerLab[0]-target.lab[0], centerLab[1]-target.lab[1], centerLab[2]-target.lab[2]) })).sort((a,b) => a.distance-b.distance);
+    const detectedFace = centerMatches[0].face;
+    const centerConfidence = centerMatches[0].distance <= 32 && centerMatches[1].distance - centerMatches[0].distance >= 5;
+    if (!centerConfidence) {
+      setCameraError('Could not confidently identify the centre colour. Move the cube closer, reduce glare, improve lighting, and capture again.');
+      return;
+    }
+    samples[centerIndex] = detectedFace;
+    setScanFace(detectedFace);
     setHistory(items => [...items.slice(-29), toString(faces)]); clearSolution();
-    setFaces(previous => ({ ...previous, [scanFace]: samples }));
+    setFaces(previous => ({ ...previous, [detectedFace]: samples }));
+    setScannedFaces(previous => previous.includes(detectedFace) ? previous : [...previous, detectedFace]);
+    const label = `${PALETTE[detectedFace].name} centre detected → ${FACE_NAMES[detectedFace]} face`;
     setCameraError(uncertain
-      ? `Captured with ${uncertain} low-confidence sticker(s). Improve lighting, avoid glare, keep one face centered inside the square guide, then correct any wrong colors in the sticker map.`
-      : 'Face captured. Review the nine detected stickers in the sticker map before solving.');
+      ? `${label}. Captured with ${uncertain} low-confidence sticker(s). Improve lighting and review the sticker map. ${scannedFaces.includes(detectedFace) ? 'This face was already scanned, so its capture was replaced.' : ''}`
+      : `${label}. Face captured. ${Math.min(6, scannedFaces.includes(detectedFace) ? scannedFaces.length : scannedFaces.length + 1)}/6 faces scanned. Review the sticker map before solving.`);
   };
   const fillSolved = () => { setHistory(items => [...items.slice(-29), toString(faces)]); setFaces(emptyFaces()); clearSolution(); setError(''); setStatus('Solved color layout restored.'); };
   const copyAlgorithm = async () => { try { await navigator.clipboard.writeText(algorithm); setStatus('Algorithm copied to clipboard.'); } catch { setStatus('Select and copy the algorithm shown below.'); } };
@@ -227,7 +249,7 @@ export default function App() {
           <h3 className="subheading">Sticker map <span>Tap a tile to cycle colors</span></h3><CubeNet faces={displayedFaces} onSticker={paintSticker} disabled={busy || Boolean(solution.length)} />
           <div className={validation.valid ? 'validation-box good' : 'validation-box'}><strong>{validation.valid ? '✓ Color counts look balanced' : '⚠ Check cube colors'}</strong><div className="count-row">{FACE_ORDER.map(face => <span key={face}><i style={{ background: PALETTE[face].color }} />{face}: {validation.counts[face]}/9</span>)}</div>{!validation.valid && <p>Every color needs nine stickers and centers must stay on their matching faces. A valid count does not guarantee every physical cube arrangement is reachable.</p>}</div>
           {featureFlags.camera_scan && <section className="scan-card"><div className="scan-heading"><div><h3>📷 Camera color assist</h3><p>Capture one face at a time, then review it in the sticker map.</p></div>{!cameraOn ? <button className="secondary-button" onClick={startCamera}>Open camera</button> : <button className="text-button" onClick={stopCamera}>Turn off</button>}</div>
-            {cameraOn && <><label className="field-label" htmlFor="scan-face">Face shown in preview</label><select id="scan-face" value={scanFace} onChange={event => setScanFace(event.target.value as Face)}>{FACE_ORDER.map(face => <option value={face} key={face}>{FACE_NAMES[face]} ({face})</option>)}</select><div className="camera-frame"><video ref={videoRef} autoPlay muted playsInline /><div className="scan-guide">{Array.from({ length: 9 }, (_, i) => <i key={i} />)}</div></div><button className="primary-button full-button" onClick={scanFaceNow}>Capture 9 colors</button></>}
+            {cameraOn && <><div className="scan-progress" aria-label={`${scannedFaces.length} of 6 faces scanned`}><div className="scan-progress-top"><span>Centre-colour auto-detection</span><b>{scannedFaces.length}/6 faces</b></div><div className="scan-progress-bar"><span style={{width:`${scannedFaces.length / 6 * 100}%`}} /></div><div className="scan-face-chips">{FACE_ORDER.map(face => <span key={face} className={scannedFaces.includes(face) ? 'scanned' : ''}><i style={{background:PALETTE[face].color}} />{FACE_NAMES[face]}</span>)}</div></div><label className="field-label" htmlFor="scan-face">Fallback face (used only if centre detection is uncertain)</label><select id="scan-face" value={scanFace} onChange={event => setScanFace(event.target.value as Face)}>{FACE_ORDER.map(face => <option value={face} key={face}>{FACE_NAMES[face]} ({face})</option>)}</select><div className="camera-frame"><video ref={videoRef} autoPlay muted playsInline /><div className="scan-guide">{Array.from({ length: 9 }, (_, i) => <i key={i} />)}</div></div><button className="primary-button full-button" onClick={scanFaceNow}>◎ Auto-detect side & capture 9 colors</button><button className="secondary-button full-button" onClick={() => { setScannedFaces([]); setCameraError('Scan progress cleared. Existing sticker colors were kept.'); }}>Reset scan progress</button></>}
             {cameraError && <p className="notice" role="status">{cameraError}</p>}
             <p className="privacy-note">Camera frames are sampled locally in this browser and are not uploaded. Lighting can misread colors.</p>
           </section>}
