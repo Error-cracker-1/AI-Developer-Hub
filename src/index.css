@@ -82,3 +82,5 @@
 .scan-face-chips i{width:8px;height:8px;border-radius:50%;border:1px solid #ffffff55}
 .scan-card .full-button+.full-button{margin-top:7px}
 @media(prefers-reduced-motion:reduce){.scan-progress-bar span{transition:none}}
+
+.scan-auto-hint{font-size:10px;line-height:1.6;color:#a6b6ca;margin:12px 0 8px;padding:9px 10px;border-left:2px solid var(--mint);background:#14251f66}
