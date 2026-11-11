@@ -13,6 +13,8 @@ import { validateCube } from './lib/validation';
 type Mode = 'fast' | 'guided';
 export default function App() {
   const featureFlags = useFeatureFlags();
+  const APP_VERSION = __APP_VERSION__;
+  const APP_COMMIT = __APP_COMMIT__;
   const [faces, setFaces] = useState<Facelets>(emptyFaces);
   const [solution, setSolution] = useState<string[]>([]);
   const [startState, setStartState] = useState('');
@@ -243,7 +245,7 @@ export default function App() {
   };
 
   return <div className="app-shell">
-    <header className="topbar"><a className="brand" href="#" aria-label="TwistLab home"><span className="brand-cube">✣</span><span>TWIST<span>LAB</span></span></a><div className="topbar-actions"><span className="privacy-pill"><i /> Local-first</span><a className="quiet-button" href="https://github.com/Error-cracker-1/AI-Developer-Hub/issues/new/choose" target="_blank" rel="noopener noreferrer" aria-label="Get support or report a TwistLab issue on GitHub">Support ↗</a><a className="quiet-button" href="https://github.com/Error-cracker-1/AI-Developer-Hub/tree/rubiks-cube-solver" target="_blank" rel="noopener noreferrer" aria-label="View TwistLab source code on the rubiks-cube-solver branch">Show code ↗</a><button className="quiet-button" onClick={() => setShowHelp(value => !value)}>How to use</button></div></header>
+    <header className="topbar"><a className="brand" href="#" aria-label="TwistLab home"><span className="brand-cube">✣</span><span>TWIST<span>LAB</span></span></a><div className="topbar-actions"><span className="privacy-pill"><i /> Local-first</span><button className="quiet-button" onClick={() => setShowHelp(value => !value)}>How to use</button></div></header>
     <main className="page">
       <section className="hero"><div className="eyebrow">INTERACTIVE CUBE LAB <span>•</span> 3×3</div><h1>Crack the cube.<br/><em>One move at a time.</em></h1><p>Paint your stickers, rotate a real 3D cube, validate the setup, then follow a verified solution.</p><div className="hero-pills"><span>3D INTERACTION</span><span>STEP-BY-STEP</span><span>NO ACCOUNT NEEDED</span></div></section>
       {showHelp && <section className="help-panel"><button className="close-help" onClick={() => setShowHelp(false)}>×</button><h3>How to use TwistLab</h3><ol><li>Drag the 3D cube to rotate it; scroll or pinch to zoom.</li><li>Tap a sticker in the 3D view or the flat net to cycle its color. Center stickers are fixed.</li><li>Each color must appear exactly nine times. A color-count check runs before solving.</li><li>Choose Fast or Guided view, then solve and use the controls to follow the verified algorithm.</li></ol><p>Notation: <b>R</b> is the right face clockwise, <b>R'</b> is counter-clockwise, and <b>R2</b> is a half-turn.</p></section>}
@@ -285,6 +287,15 @@ export default function App() {
           <div className="history-note"><span>✓</span><div><b>Solution verification</b><p>The solver's output is replayed against the cube state before it is shown.</p></div></div>
         </section>
       </div>
+      <section className="community-panel" aria-labelledby="community-title">
+        <div className="community-heading"><div><span className="community-kicker">✦ COMMUNITY & RESOURCES</span><h2 id="community-title">Need a hand? <em>We're one click away.</em></h2><p>Report a problem, suggest an improvement, or explore the source and documentation.</p></div><div className="community-version"><span>APP VERSION</span><strong>{APP_VERSION}</strong><small>Commit <code>{APP_COMMIT.slice(0, 7)}</code></small></div></div>
+        <div className="community-grid">
+          <a className="community-card support-card" href="https://github.com/Error-cracker-1/AI-Developer-Hub/issues/new?title=%5BBug%5D%20TwistLab%3A%20&body=Application%3A%20TwistLab%20(Rubik's%20Cube%20Solver)%0AVersion%3A%202.0.0%0AProduction%20branch%3A%20rubiks-cube-solver%0ABuild%20commit%3A%20__APP_COMMIT__%0A%0A%23%23%23%20What%20happened%3F%0A%0A%23%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%23%20Expected%20behaviour%0A%0A%23%23%23%20Actual%20behaviour%0A%0A%23%23%23%20Device%20%2F%20browser%0A" target="_blank" rel="noopener noreferrer"><span className="community-icon">?</span><strong>Report a bug</strong><p>Open a GitHub issue with app version, branch and build details prefilled.</p><span className="community-link">Get support ↗</span></a>
+          <a className="community-card" href="https://github.com/Error-cracker-1/AI-Developer-Hub/issues/new?title=%5BFeature%5D%20TwistLab%3A%20&body=Application%3A%20TwistLab%20(Rubik's%20Cube%20Solver)%0AVersion%3A%202.0.0%0AProduction%20branch%3A%20rubiks-cube-solver%0ABuild%20commit%3A%20__APP_COMMIT__%0A%0A%23%23%23%20What%20would%20you%20like%20to%20improve%3F%0A%0A%23%23%23%20Why%20would%20this%20help%3F%0A%0A%23%23%23%20Any%20examples%20or%20references%3F%0A" target="_blank" rel="noopener noreferrer"><span className="community-icon">✦</span><strong>Share feedback</strong><p>Suggest features and improvements for future TwistLab releases.</p><span className="community-link">Send feedback ↗</span></a>
+          <a className="community-card" href="https://github.com/Error-cracker-1/AI-Developer-Hub/blob/rubiks-cube-solver/README.md" target="_blank" rel="noopener noreferrer"><span className="community-icon">▤</span><strong>Documentation</strong><p>Read cube setup, notation, solver and project information.</p><span className="community-link">Read README ↗</span></a>
+          <a className="community-card" href="https://github.com/Error-cracker-1/AI-Developer-Hub/tree/rubiks-cube-solver" target="_blank" rel="noopener noreferrer"><span className="community-icon">⌘</span><strong>Show code</strong><p>Browse TwistLab's source on its own production branch.</p><span className="community-link">Explore source ↗</span></a>
+        </div>
+      </section>
       <footer><span>TWISTLAB / 3×3 SOLVER</span><span>Cube state stays in this tab · no sign-in</span></footer>
     </main>
 
