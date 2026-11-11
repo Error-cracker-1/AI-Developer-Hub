@@ -1,0 +1,155 @@
+name: TwistLab Tags and Releases
+
+on:
+  push:
+    tags:
+      - "twistlab-v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Existing tag to publish (must use twistlab-v prefix)"
+        required: true
+        type: string
+      gemini_model:
+        description: "Gemini model for generated release notes"
+        required: true
+        type: choice
+        default: gemini-3.8-flash
+        options:
+          - gemini-3.8-flash
+          - gemini-3.5-flash-lite
+          - gemini-3.1-flash-lite
+          - gemini-3.1-pro-preview
+
+permissions:
+  contents: write
+
+concurrency:
+  group: twistlab-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out TwistLab production source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'rubiks-cube-solver' || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve and validate release
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+          INPUT_MODEL: ${{ inputs.gemini_model }}
+          CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${INPUT_TAG:-$EVENT_REF}"
+          MODEL="${INPUT_MODEL:-${CONFIGURED_MODEL:-gemini-3.8-flash}}"
+          if [[ "$TAG_NAME" != "twistlab-v"* || ! "$TAG_NAME" =~ ^[A-Za-z0-9._-]+$ || "$TAG_NAME" == *..* || "$TAG_NAME" == *.lock ]]; then
+            echo "::error::Invalid release tag. Expected prefix twistlab-v and a valid Git tag name."
+            exit 1
+          fi
+          case "$MODEL" in
+            gemini-3.8-flash|gemini-3.5-flash-lite|gemini-3.1-flash-lite|gemini-3.1-pro-preview) ;;
+            *) echo "::error::Unsupported Gemini model: $MODEL"; exit 1 ;;
+          esac
+          git fetch origin rubiks-cube-solver
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/rubiks-cube-solver"; then
+              echo "::error::Tagged commit is not contained in rubiks-cube-solver."
+              exit 1
+            fi
+          else
+            if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+              echo "::error::Tag '$TAG_NAME' does not exist. Push the tag first, then run this workflow."
+              exit 1
+            fi
+            git checkout "$TAG_NAME"
+            if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" "origin/rubiks-cube-solver"; then
+              echo "::error::Tag commit is not contained in rubiks-cube-solver."
+              exit 1
+            fi
+          fi
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::A release already exists for $TAG_NAME."
+            exit 1
+          fi
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package source and production build
+        id: package
+        env:
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/release-package"
+          ZIP="$RUNNER_TEMP/${TAG_NAME}.zip"
+          mkdir -p "$STAGE"
+          git archive HEAD | tar -x -C "$STAGE"
+          cp -R dist "$STAGE/dist"
+          printf 'Application: TwistLab\nProduction branch: rubiks-cube-solver\nTag: %s\nCommit: %s\n' "$TAG_NAME" "$(git rev-parse HEAD)" > "$STAGE/RELEASE-MANIFEST.txt"
+          (cd "$STAGE" && zip -qr "$ZIP" .)
+          echo "zip_path=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Generate evidence-based release notes
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          MODEL: ${{ steps.meta.outputs.model }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          API_KEY="${GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}"
+          PREVIOUS_TAG="$(git tag --merged HEAD --sort=-version:refname | grep '^twistlab-v' | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            COMMITS="$(git log --pretty=format:'- %s (%h)' "$PREVIOUS_TAG"..HEAD)"
+            CHANGES="$(git diff --stat "$PREVIOUS_TAG"..HEAD)"
+          else
+            COMMITS="$(git log --pretty=format:'- %s (%h)' -n 40)"
+            CHANGES="$(git show --stat --oneline --summary HEAD)"
+          fi
+          [[ -n "$COMMITS" ]] || COMMITS="No commit messages available."
+          [[ -n "$CHANGES" ]] || CHANGES="No file change summary available."
+          if [[ -n "$API_KEY" ]]; then
+            PROMPT="$(printf '%s\n' 'Create concise, accurate GitHub release notes for TwistLab.' "Tag: $TAG_NAME" 'Use only the evidence below. Do not invent features, fixes, metrics, tests, or migration steps. Return only valid JSON with non-empty string properties title and description. The description must be Markdown.' '' 'Commits:' "$COMMITS" '' 'Changed files:' "$CHANGES")"
+            jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}}' > "$RUNNER_TEMP/request.json"
+            CODE="$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -H 'Content-Type: application/json' -X POST "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$API_KEY" --data-binary @"$RUNNER_TEMP/request.json")"
+            if [[ "$CODE" != 2* ]]; then
+              echo "::error::Gemini API failed with HTTP $CODE for $MODEL. Check model access or change RELEASE_GEMINI_MODEL."
+              jq -r '.error.message // "No API error details."' "$RUNNER_TEMP/response.json" || true
+              exit 1
+            fi
+            RESULT="$(jq -er '.candidates[0].content.parts | map(.text // "") | join("")' "$RUNNER_TEMP/response.json")"
+            jq -er '.title | strings | select(length > 0)' <<< "$RESULT" > "$RUNNER_TEMP/title.txt"
+            jq -er '.description | strings | select(length > 0)' <<< "$RESULT" > "$RUNNER_TEMP/notes.md"
+          else
+            printf 'TwistLab %s\n' "$TAG_NAME" > "$RUNNER_TEMP/title.txt"
+            printf '## Changes\n\n%s\n\n## File summary\n\n%s\n\n> Notes generated from Git history because neither GEMINI_API_KEY nor GOOGLE_API_KEY is configured.\n' "$COMMITS" "$CHANGES" > "$RUNNER_TEMP/notes.md"
+          fi
+
+      - name: Create and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          ZIP_PATH: ${{ steps.package.outputs.zip_path }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG_NAME" "$ZIP_PATH#TwistLab source and production build" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$(cat "$RUNNER_TEMP/title.txt")" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --draft
+          gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
