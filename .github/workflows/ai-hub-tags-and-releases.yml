@@ -167,7 +167,10 @@ jobs:
               exit 1
             fi
 
-            LATEST_VERSION="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}*" | sed "s/^${TAG_PREFIX}//" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+            LATEST_VERSION="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}*" | while IFS= read -r CANDIDATE_TAG; do
+              [[ "$(git rev-list -n 1 "$CANDIDATE_TAG")" == "$SOURCE_SHA" ]] && continue
+              printf '%s\n' "$CANDIDATE_TAG"
+            done | sed "s/^${TAG_PREFIX}//" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
             if [[ -z "$LATEST_VERSION" ]]; then
               MAJOR=0; MINOR=0; PATCH=0
             else
