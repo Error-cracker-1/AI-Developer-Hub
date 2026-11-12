@@ -40,58 +40,53 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      - name: Detect project-file changes and apply a default release label
+      - name: Detect application files and apply a default patch label
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
-          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
-          FILES_FILE="$RUNNER_TEMP/pr-files.jsonl"
-          : > "$FILES_FILE"
-          for PAGE in $(seq 1 30); do
-            RESPONSE="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API/pulls/$PR_NUMBER/files?per_page=100&page=$PAGE")"
-            COUNT="$(jq 'length' <<< "$RESPONSE")"
-            jq -r '.[].filename' <<< "$RESPONSE" >> "$FILES_FILE"
-            [[ "$COUNT" -lt 100 ]] && break
-          done
+          FILES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
           PROJECT_CHANGED=false
           while IFS= read -r FILE; do
             case "$FILE" in
-              .github/*|.devcontainer/*|docs/*|README*|LICENSE*|*.md|*.txt|.gitignore|DEPLOYMENT-TEST.md) ;;
-              *) PROJECT_CHANGED=true; break ;;
+              src/*|api/*|backend/*|public/*|index.html)
+                case "$FILE" in
+                  public/robots.txt|public/sitemap.xml) ;;
+                  *) PROJECT_CHANGED=true; break ;;
+                esac
+                ;;
+              *) ;;
             esac
-          done < "$FILES_FILE"
+          done <<< "$FILES"
+
           if [[ "$PROJECT_CHANGED" != true ]]; then
-            echo "No application/source files changed; no release label will be added."
-            echo "### Release label: not applicable" >> "$GITHUB_STEP_SUMMARY"
-            echo "Only documentation, workflow, or repository-maintenance files changed." >> "$GITHUB_STEP_SUMMARY"
+            echo "No application files changed. No release label is required."
+            echo "### Release decision: no application files changed" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          PR_DATA="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API/pulls/$PR_NUMBER")"
+
+          PR_DATA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
           LABEL_COUNT="$(jq '[.labels[].name | select(. == "release:major" or . == "release:minor" or . == "release:patch")] | length' <<< "$PR_DATA")"
-          LABELS="$(jq -r '[.labels[].name | select(. == "release:major" or . == "release:minor" or . == "release:patch")] | .[]' <<< "$PR_DATA")"
           if [[ "$LABEL_COUNT" -gt 1 ]]; then
-            echo "::error::Choose exactly one release label: release:major, release:minor, or release:patch."
+            echo "::error::Keep exactly one release label: release:major, release:minor, or release:patch."
             exit 1
           elif [[ "$LABEL_COUNT" -eq 1 ]]; then
-            echo "Preserving existing release label: $LABELS"
+            echo "Existing release label preserved."
           else
             for SPEC in "release:major|b60205|Breaking change" "release:minor|1d76db|New feature" "release:patch|0e8a16|Bug fix or small improvement"; do
               IFS='|' read -r NAME COLOR DESCRIPTION <<< "$SPEC"
-              CODE="$(curl -sS -o "$RUNNER_TEMP/label-response.json" -w '%{http_code}' -X POST "$API/labels" -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "Content-Type: application/json" -d "$(jq -n --arg name "$NAME" --arg color "$COLOR" --arg description "$DESCRIPTION" '{name:$name,color:$color,description:$description}')")"
-              if [[ "$CODE" != "201" && "$CODE" != "422" ]]; then
-                cat "$RUNNER_TEMP/label-response.json"
-                echo "::error::Could not ensure release label $NAME exists (HTTP $CODE)."
-                exit 1
+              if ! gh api "repos/$GITHUB_REPOSITORY/labels/$NAME" >/dev/null 2>&1; then
+                gh api --method POST "repos/$GITHUB_REPOSITORY/labels" -f name="$NAME" -f color="$COLOR" -f description="$DESCRIPTION" >/dev/null
               fi
             done
-            curl -fsSL -X POST "$API/issues/$PR_NUMBER/labels" -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "Content-Type: application/json" -d '{"labels":["release:patch"]}' >/dev/null
-            echo "Added release:patch as the safe default. Change it to major or minor if appropriate before merging."
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" -f 'labels[]=release:patch' >/dev/null
+            echo "Added release:patch as the default. Change it to major or minor before merging when appropriate."
           fi
           echo "### Release label" >> "$GITHUB_STEP_SUMMARY"
-          echo "Project files changed. Exactly one release label is required; default is `release:patch`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Application files changed. Exactly one semver release label is required." >> "$GITHUB_STEP_SUMMARY"
+
   release:
     needs: auto-label-pr
     if: >-
@@ -99,28 +94,22 @@ jobs:
       (github.event_name != 'pull_request_target' ||
        (github.event.action == 'closed' && github.event.pull_request.merged == true)) &&
       (needs.auto-label-pr.result == 'success' || needs.auto-label-pr.result == 'skipped')
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read
     concurrency:
       group: ai-hub-release
       cancel-in-progress: false
-    if: >-
-      github.event_name != 'pull_request_target' ||
-      (github.event.pull_request.merged == true &&
-       (contains(github.event.pull_request.labels.*.name, 'release:major') ||
-        contains(github.event.pull_request.labels.*.name, 'release:minor') ||
-        contains(github.event.pull_request.labels.*.name, 'release:patch')))
-    runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact production source
+      - name: Check out the exact release source
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || (github.event_name == 'workflow_dispatch' && 'deploy-vercel' || github.ref) }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Resolve version, model, and release source
+      - name: Resolve release version and verify project changes
         id: meta
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -130,7 +119,6 @@ jobs:
           CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
           GH_TOKEN: ${{ github.token }}
           PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
@@ -145,23 +133,41 @@ jobs:
           esac
 
           if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-            SOURCE_SHA="$(git rev-parse HEAD)"
-            CHANGED_FILES="$(git diff --name-only "$PR_BASE_SHA" "$SOURCE_SHA")"
-            PROJECT_FILES=""
-            while IFS= read -r FILE; do
-              case "$FILE" in
-                .github/*|.devcontainer/*|docs/*|README*|LICENSE*|*.md|*.txt|.gitignore|DEPLOYMENT-TEST.md) ;;
-                *) PROJECT_FILES+="$FILE"
             if [[ "$PR_BASE_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
               echo "::error::PR targeted the wrong production branch."
               exit 1
             fi
-            case "$PR_LABELS" in
-              release:major) LEVEL="major" ;;
-              release:minor) LEVEL="minor" ;;
-              release:patch) LEVEL="patch" ;;
-              *) echo "::error::Invalid release label: $PR_LABELS"; exit 1 ;;
-            esac
+
+            FILES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
+            PROJECT_FILES=""
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                src/*|api/*|backend/*|public/*|index.html)
+                  case "$FILE" in
+                    public/robots.txt|public/sitemap.xml) ;;
+                    *) PROJECT_FILES+="$FILE"$'\n' ;;
+                  esac
+                  ;;
+                *) ;;
+              esac
+            done <<< "$FILES"
+
+            if [[ -z "$PROJECT_FILES" ]]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "No application files changed. Skipping tag and release."
+              echo "### Release skipped" >> "$GITHUB_STEP_SUMMARY"
+              echo "Only documentation, workflow, tests, metadata, or configuration files changed." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            PR_DATA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+            LABELS_JSON="$(jq '[.labels[].name | select(. == "release:major" or . == "release:minor" or . == "release:patch")]' <<< "$PR_DATA")"
+            LABEL_COUNT="$(jq 'length' <<< "$LABELS_JSON")"
+            if [[ "$LABEL_COUNT" -ne 1 ]]; then
+              echo "::error::Exactly one release label is required for application changes."
+              exit 1
+            fi
+            LEVEL="$(jq -r '.[0] | sub("^release:";"")' <<< "$LABELS_JSON")"
 
             git fetch --tags --force origin
             git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
@@ -181,23 +187,23 @@ jobs:
               major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
               minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
               patch) PATCH=$((PATCH + 1)) ;;
+              *) echo "::error::Invalid release level: $LEVEL"; exit 1 ;;
             esac
             TAG_NAME="${TAG_PREFIX}${MAJOR}.${MINOR}.${PATCH}"
 
             if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
-              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
-              EXISTING_SHA="$(git rev-list -n 1 "$TAG_NAME")"
-              if [[ "$EXISTING_SHA" != "$SOURCE_SHA" ]]; then
-                echo "::error::Tag $TAG_NAME already exists on a different commit."
-                exit 1
-              fi
-            else
-              git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
-              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
-              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+              echo "::error::Tag $TAG_NAME already exists. Refusing to overwrite it."
+              exit 1
             fi
+            AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+            git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME" 2>/dev/null && {
+              echo "Tag $TAG_NAME must be created after annotating the commit."
+            } || true
+            git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
+            git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
             echo "release_level=$LEVEL" >> "$GITHUB_OUTPUT"
             echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
           else
             TAG_NAME="${INPUT_TAG:-$EVENT_REF}"
             if [[ ! "$TAG_NAME" =~ ^${TAG_PREFIX}[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -307,190 +313,6 @@ jobs:
 
       - name: Create and publish GitHub Release
         if: steps.meta.outputs.should_release == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
-          ZIP_PATH: ${{ steps.package.outputs.zip_path }}
-          APP: ${{ steps.meta.outputs.app }}
-        run: |
-          set -euo pipefail
-          gh release create "$TAG_NAME" "$ZIP_PATH#$APP source and production build" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$(cat "$RUNNER_TEMP/title.txt")" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            --draft
-          gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
-          echo "Published $APP release $TAG_NAME."
-\\n' ;;
-              esac
-            done <<< "$CHANGED_FILES"
-            if [[ -z "$PROJECT_FILES" ]]; then
-              echo "should_release=false" >> "$GITHUB_OUTPUT"
-              echo "Only documentation, workflow, or repository-maintenance files changed; skipping tag and release."
-              echo "### Release skipped" >> "$GITHUB_STEP_SUMMARY"
-              echo "No application/source files changed." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            mapfile -t RELEASE_LABELS < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '[.labels[].name | select(. == "release:major" or . == "release:minor" or . == "release:patch")] | .[]')
-            if [[ "${#RELEASE_LABELS[@]}" -ne 1 ]]; then
-              echo "::error::Project files changed, but exactly one release label is required. The PR auto-label step should add release:patch by default."
-              exit 1
-            fi
-            PR_LABELS="${RELEASE_LABELS[0]}"
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "Project files changed:"
-            printf '%s\\n' "$PROJECT_FILES"
-
-            if [[ "$PR_BASE_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
-              echo "::error::PR targeted the wrong production branch."
-              exit 1
-            fi
-            LEVEL=""
-            COUNT=0
-            IFS=',' read -ra LABELS <<< "$PR_LABELS"
-            for LABEL in "${LABELS[@]}"; do
-              case "$LABEL" in
-                release:major) LEVEL="major"; COUNT=$((COUNT + 1)) ;;
-                release:minor) LEVEL="minor"; COUNT=$((COUNT + 1)) ;;
-                release:patch) LEVEL="patch"; COUNT=$((COUNT + 1)) ;;
-              esac
-            done
-            if [[ "$COUNT" -ne 1 ]]; then
-              echo "::error::Merged PR must have exactly one release label: release:major, release:minor, or release:patch."
-              exit 1
-            fi
-
-            git fetch --tags --force origin
-            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
-            SOURCE_SHA="$(git rev-parse HEAD)"
-            if ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/$PRODUCTION_BRANCH"; then
-              echo "::error::Merged PR commit is not present on $PRODUCTION_BRANCH."
-              exit 1
-            fi
-
-            LATEST_VERSION="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}*" | sed "s/^${TAG_PREFIX}//" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
-            if [[ -z "$LATEST_VERSION" ]]; then
-              MAJOR=0; MINOR=0; PATCH=0
-            else
-              IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
-            fi
-            case "$LEVEL" in
-              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-              patch) PATCH=$((PATCH + 1)) ;;
-            esac
-            TAG_NAME="${TAG_PREFIX}${MAJOR}.${MINOR}.${PATCH}"
-
-            if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
-              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
-              EXISTING_SHA="$(git rev-list -n 1 "$TAG_NAME")"
-              if [[ "$EXISTING_SHA" != "$SOURCE_SHA" ]]; then
-                echo "::error::Tag $TAG_NAME already exists on a different commit."
-                exit 1
-              fi
-            else
-              git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
-              git push origin "refs/tags/$TAG_NAME"
-            fi
-            echo "release_level=$LEVEL" >> "$GITHUB_OUTPUT"
-            echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          else
-            TAG_NAME="${INPUT_TAG:-$EVENT_REF}"
-            if [[ ! "$TAG_NAME" =~ ^${TAG_PREFIX}[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::Invalid tag. Expected ai-hub-vX.Y.Z."
-              exit 1
-            fi
-            git fetch --tags --force origin
-            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
-            if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
-              echo "::error::Tag '$TAG_NAME' does not exist."
-              exit 1
-            fi
-            git checkout --detach "$TAG_NAME"
-            SOURCE_SHA="$(git rev-parse HEAD)"
-            if ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/$PRODUCTION_BRANCH"; then
-              echo "::error::Tag commit is not contained in $PRODUCTION_BRANCH."
-              exit 1
-            fi
-            echo "release_level=manual" >> "$GITHUB_OUTPUT"
-            echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          fi
-
-          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::A GitHub Release already exists for $TAG_NAME."
-            exit 1
-          fi
-          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
-          echo "app=$APP" >> "$GITHUB_OUTPUT"
-          echo "production_branch=$PRODUCTION_BRANCH" >> "$GITHUB_OUTPUT"
-
-      - name: Install dependencies and build production app
-        run: |
-          npm ci
-          npm run build
-
-      - name: Package source and production build
-        id: package
-        env:
-          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
-          APP: ${{ steps.meta.outputs.app }}
-          PRODUCTION_BRANCH: ${{ steps.meta.outputs.production_branch }}
-        run: |
-          set -euo pipefail
-          STAGE="$RUNNER_TEMP/release-package"
-          ZIP="$RUNNER_TEMP/${TAG_NAME}.zip"
-          mkdir -p "$STAGE"
-          git archive HEAD | tar -x -C "$STAGE"
-          cp -R dist "$STAGE/dist"
-          printf 'Application: %s\nProduction branch: %s\nTag: %s\nCommit: %s\n' "$APP" "$PRODUCTION_BRANCH" "$TAG_NAME" "$(git rev-parse HEAD)" > "$STAGE/RELEASE-MANIFEST.txt"
-          (cd "$STAGE" && zip -qr "$ZIP" .)
-          echo "zip_path=$ZIP" >> "$GITHUB_OUTPUT"
-
-      - name: Generate evidence-based release notes
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          MODEL: ${{ steps.meta.outputs.model }}
-          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
-          TAG_PREFIX: "ai-hub-v"
-          APP: "AI Developer Hub"
-        shell: bash
-        run: |
-          set -euo pipefail
-          API_KEY="${GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}"
-          PREVIOUS_TAG="$(git tag --merged HEAD --sort=-version:refname | grep -E "^$TAG_PREFIX[0-9]+\.[0-9]+\.[0-9]+$" | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            COMMITS="$(git log --pretty=format:'- %s (%h)' "$PREVIOUS_TAG"..HEAD)"
-            CHANGES="$(git diff --stat "$PREVIOUS_TAG"..HEAD)"
-          else
-            COMMITS="$(git log --pretty=format:'- %s (%h)' -n 40)"
-            CHANGES="$(git show --stat --oneline --summary HEAD)"
-          fi
-          [[ -n "$COMMITS" ]] || COMMITS="No commit messages available."
-          [[ -n "$CHANGES" ]] || CHANGES="No file change summary available."
-
-          GENERATED=false
-          if [[ -n "$API_KEY" ]]; then
-            PROMPT="$(printf '%s\n' "Create concise, accurate GitHub release notes for $APP." "Tag: $TAG_NAME" 'Use only the evidence below. Do not invent features, fixes, metrics, tests, or migration steps. Return only valid JSON with non-empty string properties title and description. The description must be Markdown.' '' 'Commits:' "$COMMITS" '' 'Changed files:' "$CHANGES")"
-            jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}],generationConfig:{responseMimeType:"application/json"}}' > "$RUNNER_TEMP/request.json"
-            CODE="$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -H 'Content-Type: application/json' -X POST "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$API_KEY" --data-binary @"$RUNNER_TEMP/request.json")"
-            if [[ "$CODE" == 2* ]] && jq -e '.candidates[0].content.parts | map(.text // "") | join("") | fromjson | (.title | type == "string" and length > 0) and (.description | type == "string" and length > 0)' "$RUNNER_TEMP/response.json" >/dev/null 2>&1; then
-              RESULT="$(jq -er '.candidates[0].content.parts | map(.text // "") | join("") | fromjson' "$RUNNER_TEMP/response.json")"
-              jq -er '.title' <<< "$RESULT" > "$RUNNER_TEMP/title.txt"
-              jq -er '.description' <<< "$RESULT" > "$RUNNER_TEMP/notes.md"
-              GENERATED=true
-            else
-              echo "::warning::Gemini release-note generation failed (HTTP $CODE); using verified Git history instead."
-            fi
-          fi
-
-          if [[ "$GENERATED" != true ]]; then
-            printf '%s %s\n' "$APP" "$TAG_NAME" > "$RUNNER_TEMP/title.txt"
-            printf '## Changes\n\n%s\n\n## File summary\n\n%s\n\n> Notes generated from Git history.\n' "$COMMITS" "$CHANGES" > "$RUNNER_TEMP/notes.md"
-          fi
-
-      - name: Create and publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
