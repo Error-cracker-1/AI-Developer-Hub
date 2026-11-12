@@ -176,9 +176,6 @@ jobs:
               sed "s/^${TAG_PREFIX}//" |
               grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true
             )"
-              [[ "$(git rev-list -n 1 "$CANDIDATE_TAG")" == "$SOURCE_SHA" ]] && continue
-              printf '%s\n' "$CANDIDATE_TAG"
-            done | sed "s/^${TAG_PREFIX}//" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
             if [[ -z "$LATEST_VERSION" ]]; then
               MAJOR=0; MINOR=0; PATCH=0
             else
