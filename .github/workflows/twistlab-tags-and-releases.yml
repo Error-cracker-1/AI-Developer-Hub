@@ -75,7 +75,7 @@ jobs:
             *) echo "::error::Unsupported Gemini model: $MODEL"; exit 1 ;;
           esac
 
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
             if [[ "$PR_BASE_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
               echo "::error::PR targeted the wrong production branch."
               exit 1
