@@ -221,6 +221,26 @@ jobs:
               echo "::error::Tag commit is not contained in $PRODUCTION_BRANCH."
               exit 1
             fi
+            PREVIOUS_TAG="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}"'*' | grep -Fxv "$TAG_NAME" | sort -V | tail -n 1 || true)"
+            if [[ -n "$PREVIOUS_TAG" ]]; then
+              CHANGED_FILES="$(git diff --name-only "$PREVIOUS_TAG" "$SOURCE_SHA")"
+            else
+              CHANGED_FILES="$(git ls-tree -r --name-only "$SOURCE_SHA")"
+            fi
+            PROJECT_CHANGED=false
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                src/*|api/*|backend/*|public/*|index.html)
+                  case "$FILE" in public/robots.txt|public/sitemap.xml) ;; *) PROJECT_CHANGED=true; break ;; esac
+                  ;;
+                *) ;;
+              esac
+            done <<< "$CHANGED_FILES"
+            if [[ "$PROJECT_CHANGED" != true ]]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "Tag $TAG_NAME contains no application-file changes since the previous release; skipping publication."
+              exit 0
+            fi
             echo "release_level=manual" >> "$GITHUB_OUTPUT"
             echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
             echo "should_release=true" >> "$GITHUB_OUTPUT"
