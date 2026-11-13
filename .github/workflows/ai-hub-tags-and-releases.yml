@@ -41,9 +41,11 @@ jobs:
       pull-requests: read
     steps:
       - name: Detect application files and apply a default patch label
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS_INPUT: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -139,7 +141,7 @@ jobs:
               echo "No application files changed; skipping tag and release."
               exit 0
             fi
-            PR_LABELS="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '[.labels[].name] | join(",")')"
+            PR_LABELS="$PR_LABELS_INPUT"
             if [[ "$PR_BASE_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
               echo "::error::PR targeted the wrong production branch."
               exit 1
