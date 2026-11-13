@@ -4,6 +4,7 @@ const defaults = {
   guided_mode: true,
   camera_scan: true,
   cube_history: true,
+  wca_training: true,
   fullscreen_controls: true,
   cube_assistant: false,
 } as const;
@@ -12,6 +13,7 @@ const vercelKeys = {
   guided_mode: 'guided-mode',
   camera_scan: 'camera-scan',
   cube_history: 'cube-history',
+  wca_training: 'wca-training',
   fullscreen_controls: 'fullscreen-controls',
   cube_assistant: 'cube-assistant',
 } as const;
