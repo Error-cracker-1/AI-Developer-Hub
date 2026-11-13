@@ -902,7 +902,7 @@ function App() {
               </span>
             </div>
             <div className="mode-grid">
-              {modes.filter((item) => (item.name !== 'AI Code Review' && item.name !== 'Security audit') || featureFlags.ai_code_review).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
+              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Security audit' || featureFlags.ai_security_audit).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <button
