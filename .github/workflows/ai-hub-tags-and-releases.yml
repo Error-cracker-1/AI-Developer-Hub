@@ -167,26 +167,37 @@ jobs:
               exit 1
             fi
 
-            LATEST_VERSION="$(
-              git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}"'*' |
-              while IFS= read -r CANDIDATE_TAG; do
-                [[ "$(git rev-list -n 1 "$CANDIDATE_TAG")" == "$SOURCE_SHA" ]] && continue
-                printf '%s\n' "$CANDIDATE_TAG"
-              done |
-              sed "s/^${TAG_PREFIX}//" |
-              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true
-            )"
-            if [[ -z "$LATEST_VERSION" ]]; then
-              MAJOR=0; MINOR=0; PATCH=0
-            else
-              IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
+            BASE_SHA="$(git rev-parse "$SOURCE_SHA^1")"
+            PREVIOUS_VERSION="$(git show "$BASE_SHA:package.json" | jq -r '.version // empty')"
+            PACKAGE_VERSION="$(git show "$SOURCE_SHA:package.json" | jq -r '.version // empty')"
+            if [[ ! "$PREVIOUS_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Both the previous and new package.json versions must use X.Y.Z semver."
+              exit 1
             fi
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$PREVIOUS_VERSION"
             case "$LEVEL" in
               major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
               minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
               patch) PATCH=$((PATCH + 1)) ;;
             esac
-            TAG_NAME="${TAG_PREFIX}${MAJOR}.${MINOR}.${PATCH}"
+            EXPECTED_VERSION="$MAJOR.$MINOR.$PATCH"
+            if [[ "$PACKAGE_VERSION" != "$EXPECTED_VERSION" ]]; then
+              echo "::error::The $LEVEL label requires package.json version $EXPECTED_VERSION, but found $PACKAGE_VERSION."
+              exit 1
+            fi
+            LATEST_TAG="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}"'*' | sort -V | tail -n 1 || true)"
+            if [[ -n "$LATEST_TAG" ]]; then
+              LATEST_VERSION="${LATEST_TAG#${TAG_PREFIX}}"
+              if [[ ! "$LATEST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "::error::The latest project tag has an invalid semantic version: $LATEST_TAG."
+                exit 1
+              fi
+              if [[ "$(printf '%s\n' "$LATEST_VERSION" "$PREVIOUS_VERSION" | sort -V | tail -n 1)" != "$PREVIOUS_VERSION" ]]; then
+                echo "::error::package.json version $PREVIOUS_VERSION is behind the latest release tag $LATEST_TAG. Reconcile versions before releasing."
+                exit 1
+              fi
+            fi
+            TAG_NAME="${TAG_PREFIX}${PACKAGE_VERSION}"
 
             if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
               git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
