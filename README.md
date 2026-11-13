@@ -1,6 +1,6 @@
 # AI Developer Hub
 
-A React + Vite workspace for common software-development tasks, with a Gemini-powered serverless API.
+A React + Vite workspace for common software-development tasks, with a Gemini-powered serverless API. Version 2.0 introduces a dedicated defensive source-code security audit workflow.
 
 ## Features
 
