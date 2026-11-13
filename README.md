@@ -1,6 +1,6 @@
 # TwistLab — Rubik's Cube Solver
 
-A responsive browser-based 3×3 Rubik's Cube solver inspired by the visual reference shared by the project owner.
+A responsive browser-based 3×3 Rubik's Cube solver inspired by the visual reference shared by the project owner. Version 3.0 adds a competition-focused training studio.
 
 ## Features
 
@@ -8,6 +8,8 @@ A responsive browser-based 3×3 Rubik's Cube solver inspired by the visual refer
 - Random 20-move scrambles.
 - Two-phase cube solver powered by `cubejs`.
 - Move-by-move solution guide with progress, previous/next navigation, autoplay, speed controls, and copyable notation.
+- Competition timer with 15-second inspection, keyboard controls, +2 and DNF penalties.
+- Rolling Ao5/Ao12 statistics, personal bests, CSV export, and an expanded searchable algorithm library.
 - Responsive desktop and mobile layouts.
 - Solves locally in the browser; no account or API key is required.
 

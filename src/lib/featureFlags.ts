@@ -4,6 +4,7 @@ export const defaultFeatureFlags = {
   guided_mode: true,
   camera_scan: true,
   cube_history: true,
+  wca_training: true,
   fullscreen_controls: true,
   cube_assistant: false,
 } as const;
