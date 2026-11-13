@@ -37,6 +37,7 @@ type Mode =
   | 'Explain code'
   | 'Debug code'
   | 'AI Code Review'
+  | 'Security audit'
   | 'Generate tests'
   | 'Code Playground'
   | 'README writer'
@@ -88,6 +89,11 @@ const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
   {
     name: 'AI Code Review',
     description: 'Find bugs, risks, and maintainability issues',
+    icon: ShieldCheck,
+  },
+  {
+    name: 'Security audit',
+    description: 'Audit source code for exploitable security weaknesses',
     icon: ShieldCheck,
   },
   {
@@ -835,7 +841,7 @@ function App() {
                   </div>
                   <i />
                   <div>
-                    <strong>7</strong>
+                    <strong>8</strong>
                     <span>AI workflows</span>
                   </div>
                   <i />
@@ -896,7 +902,7 @@ function App() {
               </span>
             </div>
             <div className="mode-grid">
-              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
+              {modes.filter((item) => (item.name !== 'AI Code Review' && item.name !== 'Security audit') || featureFlags.ai_code_review).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -937,22 +943,19 @@ function App() {
                   <span /> READY
                 </span>
               </div>
-              {mode === 'AI Code Review' && (
+              {(mode === 'AI Code Review' || mode === 'Security audit') && (
                 <div className="review-guide" role="note">
                   <div className="review-guide-heading">
                     <ShieldCheck size={18} />
                     <div>
-                      <strong>Structured code review</strong>
-                      <span>Prioritized findings with actionable fixes</span>
+                      <strong>{mode === 'Security audit' ? 'Security-first source audit' : 'Structured code review'}</strong>
+                      <span>{mode === 'Security audit' ? 'Evidence-led vulnerability findings with remediation guidance' : 'Prioritized findings with actionable fixes'}</span>
                     </div>
                   </div>
                   <div className="review-checklist">
-                    <span><b>01</b> Bugs & edge cases</span>
-                    <span><b>02</b> Security risks</span>
-                    <span><b>03</b> Performance & maintainability</span>
-                    <span><b>04</b> Tests to run</span>
+                    {mode === 'Security audit' ? <><span><b>01</b> Injection, XSS & access control</span><span><b>02</b> Secrets, crypto & data exposure</span><span><b>03</b> Trust boundaries & unsafe file/network access</span><span><b>04</b> Severity, evidence & fixes</span></> : <><span><b>01</b> Bugs & edge cases</span><span><b>02</b> Security risks</span><span><b>03</b> Performance & maintainability</span><span><b>04</b> Tests to run</span></>}
                   </div>
-                  <p>Attach a source file or paste code below. Findings will be prioritized by severity; the AI does not execute your code.</p>
+                  <p>{mode === 'Security audit' ? 'Attach source code or a dependency manifest. The audit is static analysis guidance only; it does not execute code or prove exploitability.' : 'Attach a source file or paste code below. Findings will be prioritized by severity; the AI does not execute your code.'}</p>
                 </div>
               )}
               {mode === 'Code Playground' && (
@@ -1026,7 +1029,9 @@ function App() {
                   value={task}
                   onChange={event => setTask(event.target.value)}
                   placeholder={
-                    mode === 'Generate tests'
+                    mode === 'Security audit'
+                      ? 'Paste code or attach a file. Ask for an OWASP-oriented audit, threat model, or review of authentication, input validation, data handling, and dependency risks…'
+                      : mode === 'Generate tests'
                       ? 'Paste code or attach a file. Mention your test framework (Jest, Vitest, Pytest, JUnit, etc.) or let DevHub recommend one. Include important expected behavior…'
                       : mode === 'AI Code Review'
                       ? 'Paste code or attach a file. Tell us what to prioritize: correctness, security, performance, edge cases, or maintainability…'
@@ -1059,7 +1064,7 @@ function App() {
                     </>
                   ) : (
                     <>
-                      <ShieldCheck size={17} /> {mode === 'AI Code Review' ? 'Review code' : 'Generate response'}{' '}
+                      <ShieldCheck size={17} /> {mode === 'Security audit' ? 'Run security audit' : mode === 'AI Code Review' ? 'Review code' : 'Generate response'}{' '}
                       <ArrowUpRight size={16} />
                     </>
                   )}
