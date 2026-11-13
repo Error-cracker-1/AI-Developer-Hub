@@ -11,8 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Existing ai-hub-vX.Y.Z tag to publish"
-        required: true
+        description: "Existing ai-hub-vX.Y.Z tag to publish, or leave blank when recovering a merged PR"
+        required: false
+        type: string
+      pull_request_number:
+        description: "Recover the release for an already-merged PR targeting this app's production branch"
+        required: false
         type: string
       gemini_model:
         description: "Gemini model used for release-note generation"
@@ -44,7 +48,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ inputs.pull_request_number || github.event.pull_request.number }}
           PR_LABELS_INPUT: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         shell: bash
         run: |
@@ -108,6 +112,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.tag_name }}
+          INPUT_PR_NUMBER: ${{ inputs.pull_request_number }}
           INPUT_MODEL: ${{ inputs.gemini_model }}
           CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
           GH_TOKEN: ${{ github.token }}
@@ -125,7 +130,25 @@ jobs:
             *) echo "::error::Unsupported Gemini model: $MODEL"; exit 1 ;;
           esac
 
-          if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+          if [[ "$EVENT_NAME" == "pull_request_target" || ( "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_PR_NUMBER" ) ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              if [[ -z "$PR_NUMBER" || -n "$INPUT_TAG" ]]; then
+                echo "::error::For recovery, provide pull_request_number and leave tag_name blank."
+                exit 1
+              fi
+              PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+              if [[ "$(jq -r '.merged' <<< "$PR_JSON")" != "true" ]]; then
+                echo "::error::The selected PR is not merged."
+                exit 1
+              fi
+              PR_BASE_BRANCH="$(jq -r '.base.ref // empty' <<< "$PR_JSON")"
+              MERGE_SHA="$(jq -r '.merge_commit_sha // empty' <<< "$PR_JSON")"
+              if [[ -z "$MERGE_SHA" ]]; then
+                echo "::error::The merged PR has no merge commit SHA."
+                exit 1
+              fi
+              git checkout --detach "$MERGE_SHA"
+            fi
             FILES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
             PROJECT_CHANGED=false
             while IFS= read -r FILE; do
