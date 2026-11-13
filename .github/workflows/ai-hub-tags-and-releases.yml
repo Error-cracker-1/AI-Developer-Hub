@@ -141,7 +141,7 @@ jobs:
               echo "No application files changed; skipping tag and release."
               exit 0
             fi
-            PR_LABELS="$PR_LABELS_INPUT"
+            PR_LABELS="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '[.labels[].name] | join(",")')"
             if [[ "$PR_BASE_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
               echo "::error::PR targeted the wrong production branch."
               exit 1
