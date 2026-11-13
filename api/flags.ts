@@ -9,6 +9,7 @@ import { flagsClient } from '@vercel/flags-core';
 
 const defaults = {
   ai_code_review: true,
+  ai_security_audit: true,
   file_uploads: true,
   code_playground: true,
   release_notes: true,
@@ -19,6 +20,7 @@ const defaults = {
 
 const vercelKeys = {
   ai_code_review: 'ai-code-review',
+  ai_security_audit: 'ai-security-audit',
   file_uploads: 'file-uploads',
   code_playground: 'code-playground',
   release_notes: 'release-notes',
