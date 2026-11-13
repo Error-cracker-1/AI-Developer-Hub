@@ -1,5 +1,6 @@
 export const defaultFeatureFlags = {
   ai_code_review: true,
+  ai_security_audit: true,
   file_uploads: true,
   code_playground: true,
   release_notes: true,
