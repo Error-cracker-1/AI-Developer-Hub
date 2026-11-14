@@ -6,7 +6,7 @@ export const defaultFeatureFlags = {
   cube_history: true,
   wca_training: true,
   fullscreen_controls: true,
-  cube_assistant: true,
+  cube_assistant: false,
 } as const;
 
 export type FeatureFlagValues = {
