@@ -6,7 +6,7 @@ const defaults = {
   cube_history: true,
   wca_training: true,
   fullscreen_controls: true,
-  cube_assistant: true,
+  cube_assistant: false,
 } as const;
 
 const vercelKeys = {
