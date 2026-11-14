@@ -18,6 +18,18 @@ on:
         description: "Recover the release for an already-merged PR targeting this app's production branch"
         required: false
         type: string
+      run_mode:
+        description: "Automatic = normal PR/tag release flow. Manual = compare two commits or merged PRs."
+        required: true
+        type: choice
+        default: automatic
+        options:
+          - automatic
+          - manual
+      compare_refs:
+        description: "Manual mode only: compare REF1...REF2 (commit SHA or merged PR number, e.g. a1b2c3...pr:123)."
+        required: false
+        type: string
       gemini_model:
         description: "Gemini model used for release-note generation"
         required: true
@@ -112,6 +124,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.tag_name }}
+          INPUT_MODE: ${{ inputs.run_mode || 'automatic' }}
+          INPUT_COMPARE_REFS: ${{ inputs.compare_refs }}
           INPUT_PR_NUMBER: ${{ inputs.pull_request_number }}
           INPUT_MODEL: ${{ inputs.gemini_model }}
           CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
@@ -130,7 +144,164 @@ jobs:
             *) echo "::error::Unsupported Gemini model: $MODEL"; exit 1 ;;
           esac
 
-          if [[ "$EVENT_NAME" == "pull_request_target" || ( "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_PR_NUMBER" ) ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "automatic" && -z "$INPUT_TAG" && -z "$INPUT_PR_NUMBER" ]]; then
+            git fetch --tags --force origin
+            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            LATEST_TAG="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}"'*' | sort -V | tail -n 1 || true)"
+            BASE_SHA=""
+            if [[ -n "$LATEST_TAG" ]]; then
+              BASE_SHA="$(git rev-parse "$LATEST_TAG^{commit}")"
+              CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$SOURCE_SHA")"
+              PREVIOUS_VERSION="$(git show "$BASE_SHA:package.json" | jq -r '.version // empty')"
+            else
+              CHANGED_FILES="$(git ls-tree -r --name-only "$SOURCE_SHA")"
+              PREVIOUS_VERSION=""
+            fi
+            PROJECT_CHANGED=false
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                src/*|api/*|backend/*|public/*|index.html)
+                  case "$FILE" in public/robots.txt|public/sitemap.xml) ;; *) PROJECT_CHANGED=true; break ;; esac
+                  ;;
+                *) ;;
+              esac
+            done <<< "$CHANGED_FILES"
+            if [[ "$PROJECT_CHANGED" != true ]]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "No application files changed since the previous release; no notes, version, tag, or release will be created."
+              echo "### Release decision: no application changes since previous release" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            PACKAGE_VERSION="$(git show "$SOURCE_SHA:package.json" | jq -r '.version // empty')"
+            if [[ ! "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::package.json must contain a valid X.Y.Z version."
+              exit 1
+            fi
+            if [[ -n "$PREVIOUS_VERSION" ]]; then
+              if [[ ! "$PREVIOUS_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$PACKAGE_VERSION" == "$PREVIOUS_VERSION" || "$(printf '%s\n' "$PREVIOUS_VERSION" "$PACKAGE_VERSION" | sort -V | tail -n 1)" != "$PACKAGE_VERSION" ]]; then
+                echo "::error::Bump package.json above the previous release version $PREVIOUS_VERSION before running automatic release mode."
+                exit 1
+              fi
+            fi
+            TAG_NAME="${TAG_PREFIX}${PACKAGE_VERSION}"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+              EXISTING_SHA="$(git rev-list -n 1 "$TAG_NAME")"
+              if [[ "$EXISTING_SHA" != "$SOURCE_SHA" ]]; then
+                echo "::error::Tag $TAG_NAME already exists on a different commit."
+                exit 1
+              fi
+            else
+              git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
+              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
+              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+            fi
+            echo "release_level=automatic" >> "$GITHUB_OUTPUT"
+            echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            echo "compare_base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "manual" && -n "$INPUT_COMPARE_REFS" ]]; then
+            COMPARE_REFS="${INPUT_COMPARE_REFS//[[:space:]]/}"
+            if [[ "$COMPARE_REFS" != *...* || "${COMPARE_REFS#*...}" == *...* ]]; then
+              echo "::error::Use exactly two refs separated by three dots: ref1...ref2. Each ref must be a commit SHA or a merged PR number (for example, a1b2c3...pr:123)."
+              exit 1
+            fi
+            BASE_REF="${COMPARE_REFS%%...*}"
+            TARGET_REF="${COMPARE_REFS#*...}"
+            if [[ -z "$BASE_REF" || -z "$TARGET_REF" || "$BASE_REF" == "$TARGET_REF" ]]; then
+              echo "::error::Provide two different refs to compare."
+              exit 1
+            fi
+            git fetch --tags --force origin
+            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
+            resolve_release_ref() {
+              local REF="$1" PR_NUMBER_VALUE="" PR_JSON="" SHA=""
+              if [[ "$REF" =~ ^(pr:|#)?[0-9]+$ ]]; then
+                PR_NUMBER_VALUE="${REF#pr:}"
+                PR_NUMBER_VALUE="${PR_NUMBER_VALUE#\#}"
+                PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER_VALUE")"
+                if [[ "$(jq -r '.merged' <<< "$PR_JSON")" != "true" ]]; then
+                  echo "::error::PR #$PR_NUMBER_VALUE is not merged; only merged PRs can be tagged for release." >&2
+                  return 1
+                fi
+                if [[ "$(jq -r '.base.ref // empty' <<< "$PR_JSON")" != "$PRODUCTION_BRANCH" ]]; then
+                  echo "::error::PR #$PR_NUMBER_VALUE does not target $PRODUCTION_BRANCH." >&2
+                  return 1
+                fi
+                SHA="$(jq -r '.merge_commit_sha // empty' <<< "$PR_JSON")"
+              else
+                SHA="$(git rev-parse --verify "${REF}^{commit}" 2>/dev/null || true)"
+              fi
+              if [[ -z "$SHA" ]]; then
+                echo "::error::Could not resolve comparison ref: $REF" >&2
+                return 1
+              fi
+              if ! git merge-base --is-ancestor "$SHA" "origin/$PRODUCTION_BRANCH"; then
+                echo "::error::Ref $REF is not contained in $PRODUCTION_BRANCH." >&2
+                return 1
+              fi
+              printf '%s' "$SHA"
+            }
+            BASE_SHA="$(resolve_release_ref "$BASE_REF")"
+            TARGET_SHA="$(resolve_release_ref "$TARGET_REF")"
+            if [[ "$BASE_SHA" == "$TARGET_SHA" ]]; then
+              echo "::error::Both refs resolve to the same commit."
+              exit 1
+            fi
+            CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$TARGET_SHA")"
+            PROJECT_CHANGED=false
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                src/*|api/*|backend/*|public/*|index.html)
+                  case "$FILE" in public/robots.txt|public/sitemap.xml) ;; *) PROJECT_CHANGED=true; break ;; esac
+                  ;;
+                *) ;;
+              esac
+            done <<< "$CHANGED_FILES"
+            if [[ "$PROJECT_CHANGED" != true ]]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "Comparison contains no application changes; workflow/configuration-only changes do not create release notes, versions, tags, or releases."
+              echo "### Release decision: no application changes in selected comparison" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            PREVIOUS_VERSION="$(git show "$BASE_SHA:package.json" | jq -r '.version // empty')"
+            PACKAGE_VERSION="$(git show "$TARGET_SHA:package.json" | jq -r '.version // empty')"
+            if [[ ! "$PREVIOUS_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Both compared commits must contain a valid X.Y.Z package.json version."
+              exit 1
+            fi
+            if [[ "$PREVIOUS_VERSION" == "$PACKAGE_VERSION" || "$(printf '%s\n' "$PREVIOUS_VERSION" "$PACKAGE_VERSION" | sort -V | tail -n 1)" != "$PACKAGE_VERSION" ]]; then
+              echo "::error::The target ref must increase package.json version beyond the base ref. Update the app version in the target commit before publishing."
+              exit 1
+            fi
+            LATEST_TAG="$(git tag --merged "$TARGET_SHA" --list "${TAG_PREFIX}"'*' | sort -V | tail -n 1 || true)"
+            if [[ -n "$LATEST_TAG" ]]; then
+              LATEST_VERSION="${LATEST_TAG#${TAG_PREFIX}}"
+              if [[ ! "$LATEST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$(printf '%s\n' "$LATEST_VERSION" "$PREVIOUS_VERSION" | sort -V | tail -n 1)" != "$PREVIOUS_VERSION" ]]; then
+                echo "::error::Comparison base version $PREVIOUS_VERSION is behind or incompatible with latest release $LATEST_TAG."
+                exit 1
+              fi
+            fi
+            TAG_NAME="${TAG_PREFIX}${PACKAGE_VERSION}"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+              EXISTING_SHA="$(git rev-list -n 1 "$TAG_NAME")"
+              if [[ "$EXISTING_SHA" != "$TARGET_SHA" ]]; then
+                echo "::error::Tag $TAG_NAME already exists on a different commit."
+                exit 1
+              fi
+            else
+              git tag -a "$TAG_NAME" "$TARGET_SHA" -m "$APP $TAG_NAME"
+              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
+              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+            fi
+            git checkout --detach "$TARGET_SHA"
+            echo "release_level=comparison" >> "$GITHUB_OUTPUT"
+            echo "source_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+            echo "compare_base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "pull_request_target" || ( "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_PR_NUMBER" ) ]]; then
             if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
               if [[ -z "$PR_NUMBER" || -n "$INPUT_TAG" ]]; then
                 echo "::error::For recovery, provide pull_request_number and leave tag_name blank."
@@ -330,18 +501,26 @@ jobs:
           MODEL: ${{ steps.meta.outputs.model }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           TAG_PREFIX: "twistlab-v"
+          COMPARE_BASE_SHA: ${{ steps.meta.outputs.compare_base_sha }}
           APP: "TwistLab"
         shell: bash
         run: |
           set -euo pipefail
           API_KEY="${GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}"
-          PREVIOUS_TAG="$(git tag --merged HEAD --sort=-version:refname | grep -E "^$TAG_PREFIX[0-9]+\.[0-9]+\.[0-9]+$" | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            COMMITS="$(git log --pretty=format:'- %s (%h)' "$PREVIOUS_TAG"..HEAD)"
-            CHANGES="$(git diff --stat "$PREVIOUS_TAG"..HEAD)"
+          PROJECT_PATHS=(src api backend public index.html)
+          EXCLUDE_PATHS=(':!public/robots.txt' ':!public/sitemap.xml')
+          if [[ -n "$COMPARE_BASE_SHA" ]]; then
+            COMMITS="$(git log --pretty=format:'- %s (%h)' "$COMPARE_BASE_SHA"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            CHANGES="$(git diff --stat "$COMPARE_BASE_SHA"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
           else
-            COMMITS="$(git log --pretty=format:'- %s (%h)' -n 40)"
-            CHANGES="$(git show --stat --oneline --summary HEAD)"
+            PREVIOUS_TAG="$(git tag --merged HEAD --sort=-version:refname | grep -E "^$TAG_PREFIX[0-9]+\\.[0-9]+\\.[0-9]+$" | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
+            if [[ -n "$PREVIOUS_TAG" ]]; then
+              COMMITS="$(git log --pretty=format:'- %s (%h)' "$PREVIOUS_TAG"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+              CHANGES="$(git diff --stat "$PREVIOUS_TAG"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            else
+              COMMITS="$(git log --pretty=format:'- %s (%h)' -n 40 -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+              CHANGES="$(git show --stat --oneline --summary HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            fi
           fi
           [[ -n "$COMMITS" ]] || COMMITS="No commit messages available."
           [[ -n "$CHANGES" ]] || CHANGES="No file change summary available."
