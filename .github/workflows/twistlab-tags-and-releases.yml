@@ -117,7 +117,7 @@ jobs:
           CONFIGURED_MODEL: ${{ vars.RELEASE_GEMINI_MODEL }}
           GH_TOKEN: ${{ github.token }}
           PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ inputs.pull_request_number || github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
