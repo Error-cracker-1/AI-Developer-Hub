@@ -7,6 +7,7 @@ export const defaultFeatureFlags = {
   session_history: false,
   projects_tab: false,
   aihub_ai_chat: true,
+  autonomous_agent: true,
 } as const;
 
 export type FeatureFlagValues = {
