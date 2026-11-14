@@ -41,8 +41,7 @@ type Mode =
   | 'Generate tests'
   | 'Code Playground'
   | 'README writer'
-  | 'Release notes'
-  | 'Autonomous Agent';
+  | 'Release notes';
 type Session = {
   id: string;
   mode: Mode;
@@ -116,11 +115,6 @@ const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
     name: 'Release notes',
     description: 'Write structured Markdown release notes',
     icon: Github,
-  },
-  {
-    name: 'Autonomous Agent',
-    description: 'Plan multi-file changes and prepare reviewable patches',
-    icon: Bot,
   },
 ];
 const languages = [
@@ -908,7 +902,7 @@ function App() {
               </span>
             </div>
             <div className="mode-grid">
-              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Security audit' || featureFlags.ai_security_audit).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).filter((item) => item.name !== 'Autonomous Agent' || featureFlags.autonomous_agent).map((item, index) => {
+              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Security audit' || featureFlags.ai_security_audit).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -949,13 +943,6 @@ function App() {
                   <span /> READY
                 </span>
               </div>
-              {mode === 'Autonomous Agent' && (
-                <div className="review-guide" role="note">
-                  <div className="review-guide-heading"><Bot size={18} /><div><strong>Agent planning workspace</strong><span>Architecture, phased implementation, reviewable unified diffs and verification plan</span></div></div>
-                  <div className="review-checklist"><span><b>01</b> Inspect supplied files and constraints</span><span><b>02</b> Build a dependency-aware change plan</span><span><b>03</b> Draft file-by-file patches for review</span><span><b>04</b> Provide tests, risks and rollback notes</span></div>
-                  <p>The agent prepares code changes for human review. It does not execute code, access your repository, or apply patches automatically.</p>
-                </div>
-              )}
               {(mode === 'AI Code Review' || mode === 'Security audit') && (
                 <div className="review-guide" role="note">
                   <div className="review-guide-heading">
