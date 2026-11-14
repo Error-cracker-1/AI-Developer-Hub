@@ -3,6 +3,8 @@ import {
   Activity,
   Bot,
   MessageCircle,
+  Maximize2,
+  Minimize2,
   Send,
   ArrowUpRight,
   BookOpen,
@@ -221,9 +223,16 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>(readSessions);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(readChatMessages);
   const [chatInput, setChatInput] = useState('');
+  const [chatFullscreen, setChatFullscreen] = useState(false);
   const [chatAttachedFile, setChatAttachedFile] = useState<{ name: string; text: string } | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState('');
+  useEffect(() => {
+    if (!chatFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setChatFullscreen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [chatFullscreen]);
   const [historyQuery, setHistoryQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>(readProjects);
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -796,14 +805,19 @@ function App() {
           </div>
         </header>
         {tab === 'Chat' && featureFlags.aihub_ai_chat ? (
-          <div className="chat-content">
+          <div className={`chat-content${chatFullscreen ? " chat-fullscreen" : ""}`}>
             <div className="chat-heading">
               <div>
                 <div className="eyebrow"><MessageCircle size={14} /> YOUR ALWAYS-AVAILABLE DEVELOPMENT PARTNER</div>
                 <h1>Chat with <span>DevHub.</span></h1>
                 <p>Plan features, design architecture, draft multi-file code changes, debug, generate tests, review security, and use your saved project context.</p>
               </div>
-              <button className="secondary-button" disabled={!chatMessages.length || chatLoading} onClick={() => { setChatMessages([]); setChatError(''); }}> <Trash2 size={14}/> Clear chat</button>
+              <div className="chat-heading-actions">
+                <button className="secondary-button chat-fullscreen-toggle" type="button" onClick={() => setChatFullscreen(value => !value)} aria-label={chatFullscreen ? 'Exit full screen' : 'Open full screen'} title={chatFullscreen ? 'Exit full screen (Esc)' : 'Open full screen'}>
+                  {chatFullscreen ? <Minimize2 size={15}/> : <Maximize2 size={15}/>} {chatFullscreen ? 'Exit full screen' : 'Full screen'}
+                </button>
+                <button className="secondary-button" disabled={!chatMessages.length || chatLoading} onClick={() => { setChatMessages([]); setChatError(''); }}> <Trash2 size={14}/> Clear chat</button>
+              </div>
             </div>
             <section className="chat-panel" aria-label="DevHub chat">
               <div className="chat-messages" aria-live="polite">
