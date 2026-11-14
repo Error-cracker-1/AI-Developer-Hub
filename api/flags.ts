@@ -16,7 +16,6 @@ const defaults = {
   session_history: process.env.VERCEL_ENV !== 'production',
   projects_tab: process.env.VERCEL_ENV !== 'production',
   aihub_ai_chat: true,
-  autonomous_agent: true,
 } as const;
 
 const vercelKeys = {
@@ -28,7 +27,6 @@ const vercelKeys = {
   session_history: 'session-history',
   projects_tab: 'projects-tab',
   aihub_ai_chat: 'aihub-ai-chat',
-  autonomous_agent: 'autonomous-agent',
 } as const;
 
 type FlagKey = keyof typeof defaults;
