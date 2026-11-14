@@ -212,7 +212,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [tab, setTab] = useState<'Workspace' | 'Projects' | 'History'>('Workspace');
+  const [tab, setTab] = useState<'Workspace' | 'Chat' | 'Projects' | 'History'>('Workspace');
   useEffect(() => {
     if (!featureFlags.session_history && tab === 'History') setTab('Workspace');
     if (!featureFlags.projects_tab && tab === 'Projects') setTab('Workspace');
