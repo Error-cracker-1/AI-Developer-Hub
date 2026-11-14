@@ -41,8 +41,7 @@ type Mode =
   | 'Generate tests'
   | 'Code Playground'
   | 'README writer'
-  | 'Release notes'
-  | 'Autonomous Agent';
+  | 'Release notes';
 type Session = {
   id: string;
   mode: Mode;
@@ -117,11 +116,7 @@ const modes: { name: Mode; description: string; icon: typeof Code2 }[] = [
     description: 'Write structured Markdown release notes',
     icon: Github,
   },
-  {
-    name: 'Autonomous Agent',
-    description: 'Plan multi-file changes and prepare reviewable patches',
-    icon: Bot,
-  },
+
 ];
 const languages = [
   'Python',
@@ -226,6 +221,7 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>(readSessions);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(readChatMessages);
   const [chatInput, setChatInput] = useState('');
+  const [chatAttachedFile, setChatAttachedFile] = useState<{ name: string; text: string } | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState('');
   const [historyQuery, setHistoryQuery] = useState('');
@@ -401,6 +397,21 @@ function App() {
     }
   }
 
+  async function handleChatFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 100 * 1024) { setChatError('Code attachments must be 100 KB or smaller.'); return; }
+    try {
+      const text = await file.text();
+      if (text.includes('\\u0000')) throw new Error('This file does not appear to be plain text or source code.');
+      setChatAttachedFile({ name: file.name.slice(0, 180), text });
+      setChatError('');
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Could not read this code file.');
+    }
+  }
+
   async function sendChatMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const prompt = chatInput.trim();
@@ -428,6 +439,7 @@ function App() {
               mode: item.mode, language: item.language, task: item.task.slice(0, 700),
               result: item.result.slice(0, 700),
             })),
+            codeFile: chatAttachedFile ? { name: chatAttachedFile.name, content: chatAttachedFile.text } : null,
           },
         }),
       });
@@ -789,7 +801,7 @@ function App() {
               <div>
                 <div className="eyebrow"><MessageCircle size={14} /> YOUR ALWAYS-AVAILABLE DEVELOPMENT PARTNER</div>
                 <h1>Chat with <span>DevHub.</span></h1>
-                <p>Ask coding questions, debug errors, plan features, and get help with the projects and recent work saved in this browser.</p>
+                <p>Plan features, design architecture, draft multi-file code changes, debug, generate tests, review security, and use your saved project context.</p>
               </div>
               <button className="secondary-button" disabled={!chatMessages.length || chatLoading} onClick={() => { setChatMessages([]); setChatError(''); }}> <Trash2 size={14}/> Clear chat</button>
             </div>
@@ -799,9 +811,9 @@ function App() {
                   <div className="chat-welcome">
                     <span className="chat-welcome-icon"><Bot size={25}/></span>
                     <h2>What are we building today?</h2>
-                    <p>I'm DevHub's coding assistant. I can use your saved project list and recent workspace sessions as context.</p>
+                    <p>I'm DevHub, your coding partner. I can plan implementations, draft reviewable patches, debug code, generate tests, and review uploaded source files using your saved project context.</p>
                     <div className="chat-suggestions">
-                      {['Help me plan my next feature','Explain an API design pattern','Review my project priorities'].map(prompt => <button key={prompt} onClick={() => setChatInput(prompt)}>{prompt}<ArrowUpRight size={13}/></button>)}
+                      {['Plan and implement a new feature','Debug this code and propose a patch','Create tests and review security'].map(prompt => <button key={prompt} onClick={() => setChatInput(prompt)}>{prompt}<ArrowUpRight size={13}/></button>)}
                     </div>
                   </div>
                 )}
@@ -818,10 +830,15 @@ function App() {
               </div>
               {chatError && <div className="chat-error" role="alert">{chatError}</div>}
               <form className="chat-compose" onSubmit={sendChatMessage}>
-                <textarea value={chatInput} onChange={event => setChatInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={2} maxLength={8000} placeholder="Ask DevHub anything about coding or your projects…" aria-label="Message DevHub" disabled={chatLoading}/>
-                <button className="generate-button chat-send" type="submit" disabled={chatLoading || !chatInput.trim()}>{chatLoading ? <LoaderCircle size={17} className="spin"/> : <Send size={17}/>} Send</button>
+                <label className="attach-file-button chat-attach-button">
+                  <Paperclip size={15} /> {chatAttachedFile ? 'Replace code' : 'Attach code'}
+                  <input type="file" accept=".txt,.md,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.js,.jsx,.ts,.tsx,.py,.java,.kt,.c,.h,.cpp,.hpp,.cs,.go,.rs,.php,.rb,.swift,.sql,.sh,.toml,.vue,.svelte,.astro,.log" onChange={handleChatFileChange} disabled={chatLoading}/>
+                </label>
+                <textarea value={chatInput} onChange={event => setChatInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={2} maxLength={8000} placeholder="Ask DevHub to plan, build, debug, test or review code…" aria-label="Message DevHub" disabled={chatLoading}/>
+                <button className="generate-button chat-send" type="submit" disabled={chatLoading || (!chatInput.trim() && !chatAttachedFile)}>{chatLoading ? <LoaderCircle size={17} className="spin"/> : <Send size={17}/>} Send</button>
               </form>
-              <p className="chat-disclaimer">AI responses can be incorrect. Do not share passwords, API keys, or other secrets. Chat history is saved in this browser.</p>
+              {chatAttachedFile && <div className="attached-file chat-attached-file"><FileCode2 size={14}/>{chatAttachedFile.name}<button type="button" onClick={() => setChatAttachedFile(null)} aria-label="Remove attached code file"><X size={14}/></button></div>}
+              <p className="chat-disclaimer">Attach a source file (up to 100 KB) for code-aware help. DevHub can draft patches and tests but cannot execute code or access your repository from this chat. Do not share passwords or API keys. Chat history is saved in this browser.</p>
             </section>
           </div>
         ) : tab === 'Workspace' ? (
@@ -908,7 +925,7 @@ function App() {
               </span>
             </div>
             <div className="mode-grid">
-              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Security audit' || featureFlags.ai_security_audit).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).filter((item) => item.name !== 'Autonomous Agent' || featureFlags.autonomous_agent).map((item, index) => {
+              {modes.filter((item) => item.name !== 'AI Code Review' || featureFlags.ai_code_review).filter((item) => item.name !== 'Security audit' || featureFlags.ai_security_audit).filter((item) => item.name !== 'Code Playground' || featureFlags.code_playground).filter((item) => item.name !== 'Release notes' || featureFlags.release_notes).map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -949,13 +966,6 @@ function App() {
                   <span /> READY
                 </span>
               </div>
-              {mode === 'Autonomous Agent' && (
-                <div className="review-guide" role="note">
-                  <div className="review-guide-heading"><Bot size={18} /><div><strong>Agent planning workspace</strong><span>Architecture, phased implementation, reviewable unified diffs and verification plan</span></div></div>
-                  <div className="review-checklist"><span><b>01</b> Inspect supplied files and constraints</span><span><b>02</b> Build a dependency-aware change plan</span><span><b>03</b> Draft file-by-file patches for review</span><span><b>04</b> Provide tests, risks and rollback notes</span></div>
-                  <p>The agent prepares code changes for human review. It does not execute code, access your repository, or apply patches automatically.</p>
-                </div>
-              )}
               {(mode === 'AI Code Review' || mode === 'Security audit') && (
                 <div className="review-guide" role="note">
                   <div className="review-guide-heading">
