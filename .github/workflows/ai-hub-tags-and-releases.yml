@@ -144,7 +144,64 @@ jobs:
             *) echo "::error::Unsupported Gemini model: $MODEL"; exit 1 ;;
           esac
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "manual" && -n "$INPUT_COMPARE_REFS" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "automatic" && -z "$INPUT_TAG" && -z "$INPUT_PR_NUMBER" ]]; then
+            git fetch --tags --force origin
+            git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            LATEST_TAG="$(git tag --merged "$SOURCE_SHA" --list "${TAG_PREFIX}"'*' | sort -V | tail -n 1 || true)"
+            BASE_SHA=""
+            if [[ -n "$LATEST_TAG" ]]; then
+              BASE_SHA="$(git rev-parse "$LATEST_TAG^{commit}")"
+              CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$SOURCE_SHA")"
+              PREVIOUS_VERSION="$(git show "$BASE_SHA:package.json" | jq -r '.version // empty')"
+            else
+              CHANGED_FILES="$(git ls-tree -r --name-only "$SOURCE_SHA")"
+              PREVIOUS_VERSION=""
+            fi
+            PROJECT_CHANGED=false
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                src/*|api/*|backend/*|public/*|index.html)
+                  case "$FILE" in public/robots.txt|public/sitemap.xml) ;; *) PROJECT_CHANGED=true; break ;; esac
+                  ;;
+                *) ;;
+              esac
+            done <<< "$CHANGED_FILES"
+            if [[ "$PROJECT_CHANGED" != true ]]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "No application files changed since the previous release; no notes, version, tag, or release will be created."
+              echo "### Release decision: no application changes since previous release" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            PACKAGE_VERSION="$(git show "$SOURCE_SHA:package.json" | jq -r '.version // empty')"
+            if [[ ! "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::package.json must contain a valid X.Y.Z version."
+              exit 1
+            fi
+            if [[ -n "$PREVIOUS_VERSION" ]]; then
+              if [[ ! "$PREVIOUS_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$PACKAGE_VERSION" == "$PREVIOUS_VERSION" || "$(printf '%s\n' "$PREVIOUS_VERSION" "$PACKAGE_VERSION" | sort -V | tail -n 1)" != "$PACKAGE_VERSION" ]]; then
+                echo "::error::Bump package.json above the previous release version $PREVIOUS_VERSION before running automatic release mode."
+                exit 1
+              fi
+            fi
+            TAG_NAME="${TAG_PREFIX}${PACKAGE_VERSION}"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+              EXISTING_SHA="$(git rev-list -n 1 "$TAG_NAME")"
+              if [[ "$EXISTING_SHA" != "$SOURCE_SHA" ]]; then
+                echo "::error::Tag $TAG_NAME already exists on a different commit."
+                exit 1
+              fi
+            else
+              git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
+              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
+              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+            fi
+            echo "release_level=automatic" >> "$GITHUB_OUTPUT"
+            echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            echo "compare_base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "manual" && -n "$INPUT_COMPARE_REFS" ]]; then
             COMPARE_REFS="${INPUT_COMPARE_REFS//[[:space:]]/}"
             if [[ "$COMPARE_REFS" != *...* || "${COMPARE_REFS#*...}" == *...* ]]; then
               echo "::error::Use exactly two refs separated by three dots: ref1...ref2. Each ref must be a commit SHA or a merged PR number (for example, a1b2c3...pr:123)."
