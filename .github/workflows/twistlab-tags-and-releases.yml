@@ -493,7 +493,7 @@ jobs:
           (cd "$STAGE" && zip -qr "$ZIP" .)
           echo "zip_path=$ZIP" >> "$GITHUB_OUTPUT"
 
-      - name: Generate evidence-based release notes
+      - name: Generate detailed, evidence-based release notes
         if: steps.meta.outputs.should_release == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -502,7 +502,10 @@ jobs:
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           TAG_PREFIX: "twistlab-v"
           COMPARE_BASE_SHA: ${{ steps.meta.outputs.compare_base_sha }}
+          RELEASE_LEVEL: ${{ steps.meta.outputs.release_level }}
           APP: "TwistLab"
+          PRODUCTION_BRANCH: "rubiks-cube-solver"
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -510,24 +513,45 @@ jobs:
           PROJECT_PATHS=(src api backend public index.html)
           EXCLUDE_PATHS=(':!public/robots.txt' ':!public/sitemap.xml')
           if [[ -n "$COMPARE_BASE_SHA" ]]; then
-            COMMITS="$(git log --pretty=format:'- %s (%h)' "$COMPARE_BASE_SHA"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
-            CHANGES="$(git diff --stat "$COMPARE_BASE_SHA"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            BASE_REF="$COMPARE_BASE_SHA"
           else
-            PREVIOUS_TAG="$(git tag --merged HEAD --sort=-version:refname | grep -E "^$TAG_PREFIX[0-9]+\\.[0-9]+\\.[0-9]+$" | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
-            if [[ -n "$PREVIOUS_TAG" ]]; then
-              COMMITS="$(git log --pretty=format:'- %s (%h)' "$PREVIOUS_TAG"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
-              CHANGES="$(git diff --stat "$PREVIOUS_TAG"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
-            else
-              COMMITS="$(git log --pretty=format:'- %s (%h)' -n 40 -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
-              CHANGES="$(git show --stat --oneline --summary HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
-            fi
+            BASE_REF="$(git tag --merged HEAD --sort=-version:refname | grep -E "^$TAG_PREFIX[0-9]+\\.[0-9]+\\.[0-9]+$" | grep -Fxv "$TAG_NAME" | head -n 1 || true)"
           fi
-          [[ -n "$COMMITS" ]] || COMMITS="No commit messages available."
-          [[ -n "$CHANGES" ]] || CHANGES="No file change summary available."
+
+          if [[ -n "$BASE_REF" ]]; then
+            RANGE="$BASE_REF..HEAD"
+            COMMITS="$(git log --reverse --pretty=format:'- %s (%h)%n  Author: %an%n  Details: %b' "$RANGE" -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            CHANGES="$(git diff --stat "$BASE_REF"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            FILE_CHANGES="$(git diff --name-status "$BASE_REF"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+          else
+            COMMITS="$(git log --reverse --pretty=format:'- %s (%h)%n  Author: %an%n  Details: %b' -n 40 -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}")"
+            ROOT_COMMIT="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+            CHANGES="$(git diff --stat "$ROOT_COMMIT"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}" || true)"
+            FILE_CHANGES="$(git diff --name-status "$ROOT_COMMIT"..HEAD -- "${PROJECT_PATHS[@]}" "${EXCLUDE_PATHS[@]}" || true)"
+          fi
+          [[ -n "$COMMITS" ]] || COMMITS="No commit details available."
+          [[ -n "$CHANGES" ]] || CHANGES="No diff summary available."
+          [[ -n "$FILE_CHANGES" ]] || FILE_CHANGES="No file-level changes available."
+          VERSION="${TAG_NAME#"$TAG_PREFIX"}"
+          PREVIOUS_VERSION="not available"
+          if [[ -n "$BASE_REF" && "$BASE_REF" != "$COMPARE_BASE_SHA" ]]; then
+            PREVIOUS_VERSION="$(git show "$BASE_REF:package.json" 2>/dev/null | jq -r '.version // "not available"' || true)"
+          elif [[ -n "$COMPARE_BASE_SHA" ]]; then
+            PREVIOUS_VERSION="$(git show "$COMPARE_BASE_SHA:package.json" 2>/dev/null | jq -r '.version // "not available"' || true)"
+          fi
 
           GENERATED=false
           if [[ -n "$API_KEY" ]]; then
-            PROMPT="$(printf '%s\n' "Create concise, accurate GitHub release notes for $APP." "Tag: $TAG_NAME" 'Use only the evidence below. Do not invent features, fixes, metrics, tests, or migration steps. Return only valid JSON with non-empty string properties title and description. The description must be Markdown.' '' 'Commits:' "$COMMITS" '' 'Changed files:' "$CHANGES")"
+            PROMPT="$(printf '%s\\n' \
+              "Write polished, detailed GitHub release notes for $APP." \
+              "Release tag: $TAG_NAME" "Version: $VERSION" "Previous version: $PREVIOUS_VERSION" \
+              "Release classification: ${RELEASE_LEVEL:-not specified}" "Production branch: $PRODUCTION_BRANCH" \
+              'Use only the evidence below. Never invent features, bug fixes, metrics, test results, security claims, breaking changes, compatibility statements, or migration steps.' \
+              'Return only valid JSON with non-empty string properties title and description. The description must be GitHub-flavored Markdown.' \
+              'Organize the description with these sections when supported by evidence: Overview; Highlights; New Features; Improvements; Bug Fixes; Performance and Reliability; Developer/Technical Changes; Breaking Changes and Migration; Upgrade Instructions; Contributors; Full Change List.' \
+              'Omit sections with no evidence. If no breaking changes are evidenced, explicitly say "No known breaking changes are identified in this release." Do not claim tests passed unless the evidence states that.' \
+              'Explain user-visible impact, not just file names. Keep commit references such as short SHAs. Include a concise version summary near the top. Do not include generic installation commands unless the repository evidence proves them.' \
+              '' 'Commits and commit bodies:' "$COMMITS" '' 'Changed files (status and path):' "$FILE_CHANGES" '' 'Change statistics:' "$CHANGES")"
             jq -n --arg prompt "$PROMPT" '{contents:[{parts:[{text:$prompt}]}],generationConfig:{responseMimeType:"application/json"}}' > "$RUNNER_TEMP/request.json"
             CODE="$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -H 'Content-Type: application/json' -X POST "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$API_KEY" --data-binary @"$RUNNER_TEMP/request.json")"
             if [[ "$CODE" == 2* ]] && jq -e '.candidates[0].content.parts | map(.text // "") | join("") | fromjson | (.title | type == "string" and length > 0) and (.description | type == "string" and length > 0)' "$RUNNER_TEMP/response.json" >/dev/null 2>&1; then
@@ -536,13 +560,22 @@ jobs:
               jq -er '.description' <<< "$RESULT" > "$RUNNER_TEMP/notes.md"
               GENERATED=true
             else
-              echo "::warning::Gemini release-note generation failed (HTTP $CODE); using verified Git history instead."
+              echo "::warning::Gemini release-note generation failed (HTTP $CODE); using expanded Git-history notes."
             fi
           fi
 
           if [[ "$GENERATED" != true ]]; then
-            printf '%s %s\n' "$APP" "$TAG_NAME" > "$RUNNER_TEMP/title.txt"
-            printf '## Changes\n\n%s\n\n## File summary\n\n%s\n\n> Notes generated from Git history.\n' "$COMMITS" "$CHANGES" > "$RUNNER_TEMP/notes.md"
+            {
+              printf '# %s %s\\n\\n' "$APP" "$VERSION"
+              printf '> Release tag: `%s` · Branch: `%s` · Release type: %s\\n\\n' "$TAG_NAME" "$PRODUCTION_BRANCH" "${RELEASE_LEVEL:-not specified}"
+              printf '## Overview\\n\\nThis release contains the application changes listed below, based on the verified Git history.\\n\\n'
+              printf '## Highlights and Changes\\n\\n%s\\n\\n' "$COMMITS"
+              printf '## Changed Files\\n\\n```text\\n%s\\n```\\n\\n' "$FILE_CHANGES"
+              printf '## Change Statistics\\n\\n```text\\n%s\\n```\\n\\n' "$CHANGES"
+              printf '## Upgrade Information\\n\\nReview the changes and your deployment configuration before upgrading. No additional migration steps are asserted by this automated summary.\\n\\n'
+              printf '## Source\\n\\nGenerated from the project-specific Git history on branch `%s`.\\n' "$PRODUCTION_BRANCH"
+            } > "$RUNNER_TEMP/notes.md"
+            printf '%s %s\\n' "$APP" "$TAG_NAME" > "$RUNNER_TEMP/title.txt"
           fi
 
       - name: Create and publish GitHub Release
