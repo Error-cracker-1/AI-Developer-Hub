@@ -65,6 +65,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Ensure annotated tags and any release commits always have a valid identity.
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Backward-compatible recovery: accept a numeric PR number in compare_refs
+          # when automatic mode is selected and pull_request_number is left blank.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "automatic" && -z "$INPUT_PR_NUMBER" && "$INPUT_COMPARE_REFS" =~ ^[0-9]+$ ]]; then
+            INPUT_PR_NUMBER="$INPUT_COMPARE_REFS"
+            PR_NUMBER="$INPUT_PR_NUMBER"
+          fi
           FILES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
           PROJECT_CHANGED=false
           while IFS= read -r FILE; do
