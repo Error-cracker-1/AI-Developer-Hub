@@ -357,14 +357,16 @@ jobs:
 
             git fetch --tags --force origin
             git fetch origin "+refs/heads/$PRODUCTION_BRANCH:refs/remotes/origin/$PRODUCTION_BRANCH"
-            SOURCE_SHA="$(git rev-parse HEAD)"
-            if ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/$PRODUCTION_BRANCH"; then
+            MERGED_PR_SHA="$(git rev-parse HEAD)"
+            if ! git merge-base --is-ancestor "$MERGED_PR_SHA" "origin/$PRODUCTION_BRANCH"; then
               echo "::error::Merged PR commit is not present on $PRODUCTION_BRANCH."
               exit 1
             fi
-
-            BASE_SHA="$(git rev-parse "$SOURCE_SHA^1")"
-            PREVIOUS_VERSION="$(git show "$BASE_SHA:package.json" | jq -r '.version // empty')"
+            # Release from the latest production tip so sequential merges never create non-fast-forward pushes.
+            git checkout -B "$PRODUCTION_BRANCH" "origin/$PRODUCTION_BRANCH"
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            BASE_SHA="$SOURCE_SHA"
+            PREVIOUS_VERSION="$(git show "$SOURCE_SHA:package.json" | jq -r '.version // empty')"
             if [[ ! "$PREVIOUS_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "::error::The previous package.json version must use X.Y.Z semver."
               exit 1
@@ -379,7 +381,6 @@ jobs:
             EXPECTED_VERSION="$MAJOR.$MINOR.$PATCH"
             echo "Applying $LEVEL release version $EXPECTED_VERSION to package.json and package-lock.json."
 
-            git checkout -B "$PRODUCTION_BRANCH" "$SOURCE_SHA"
             jq --arg version "$EXPECTED_VERSION" '.version = $version' package.json > package.json.tmp
             mv package.json.tmp package.json
             jq --arg version "$EXPECTED_VERSION" '
