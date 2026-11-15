@@ -400,7 +400,7 @@ jobs:
             SOURCE_SHA="$(git rev-parse HEAD)"
             PACKAGE_VERSION="$(git show "$SOURCE_SHA:package.json" | jq -r '.version // empty')"
             LOCK_VERSION="$(git show "$SOURCE_SHA:package-lock.json" | jq -r '.version // empty')"
-            LOCK_ROOT_VERSION="$(git show "$SOURCE_SHA:package-lock.json" | jq -r '.packages[\"\"].version // empty')"
+            LOCK_ROOT_VERSION="$(git show "$SOURCE_SHA:package-lock.json" | jq -r '.packages[""].version // empty')"
             if [[ "$PACKAGE_VERSION" != "$EXPECTED_VERSION" || "$LOCK_VERSION" != "$EXPECTED_VERSION" || "$LOCK_ROOT_VERSION" != "$EXPECTED_VERSION" ]]; then
               echo "::error::package.json and package-lock.json versions are not synchronized after the automatic bump."
               exit 1
@@ -413,7 +413,7 @@ jobs:
                 echo "::error::The latest project tag has an invalid semantic version: $LATEST_TAG."
                 exit 1
               fi
-              if [[ "$(printf '%s\\n' "$LATEST_VERSION" "$PREVIOUS_VERSION" | sort -V | tail -n 1)" != "$PREVIOUS_VERSION" ]]; then
+              if [[ "$(printf '%s\n' "$LATEST_VERSION" "$PREVIOUS_VERSION" | sort -V | tail -n 1)" != "$PREVIOUS_VERSION" ]]; then
                 echo "::error::Previous package version $PREVIOUS_VERSION is behind latest release tag $LATEST_TAG."
                 exit 1
               fi
@@ -568,7 +568,7 @@ jobs:
 
           GENERATED=false
           if [[ -n "$API_KEY" ]]; then
-            PROMPT="$(printf '%s\\n' \
+            PROMPT="$(printf '%s\n' \
               "Write polished, detailed GitHub release notes for $APP." \
               "Release tag: $TAG_NAME" "Version: $VERSION" "Previous version: $PREVIOUS_VERSION" \
               "Release classification: ${RELEASE_LEVEL:-not specified}" "Production branch: $PRODUCTION_BRANCH" \
