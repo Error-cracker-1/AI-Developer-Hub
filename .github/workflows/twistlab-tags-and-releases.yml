@@ -311,6 +311,9 @@ jobs:
               git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
             fi
             git checkout --detach "$TARGET_SHA"
+            # Restore a canonical HTTPS remote after the PR-ref checkout; never embed
+            # Markdown/link syntax or trailing slash in the remote URL.
+            git remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
             echo "release_level=comparison" >> "$GITHUB_OUTPUT"
             echo "source_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
             echo "compare_base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
