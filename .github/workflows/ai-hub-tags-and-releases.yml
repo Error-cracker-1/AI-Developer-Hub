@@ -65,16 +65,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Ensure annotated tags and any release commits always have a valid identity.
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Backward-compatible recovery: accept a numeric PR number in compare_refs
-          # when automatic mode is selected and pull_request_number is left blank.
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "automatic" && -z "$INPUT_PR_NUMBER" && "$INPUT_COMPARE_REFS" =~ ^[0-9]+$ ]]; then
-            INPUT_PR_NUMBER="$INPUT_COMPARE_REFS"
-            PR_NUMBER="$INPUT_PR_NUMBER"
-          fi
           FILES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
           PROJECT_CHANGED=false
           while IFS= read -r FILE; do
@@ -145,6 +135,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # This step runs in its own job checkout; configure identity here, not in auto-label-pr.
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_AUTHOR_NAME="github-actions[bot]"
+          export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="github-actions[bot]"
+          export GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Accept a numeric PR number entered in compare_refs during automatic recovery.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_MODE" == "automatic" && -z "$INPUT_PR_NUMBER" && "$INPUT_COMPARE_REFS" =~ ^[0-9]+$ ]]; then
+            INPUT_PR_NUMBER="$INPUT_COMPARE_REFS"
+            PR_NUMBER="$INPUT_PR_NUMBER"
+          fi
+
           APP="AI Developer Hub"
           PRODUCTION_BRANCH="deploy-vercel"
           TAG_PREFIX="ai-hub-v"
