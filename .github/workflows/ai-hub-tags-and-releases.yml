@@ -116,7 +116,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || (github.event_name == 'workflow_dispatch' && 'deploy-vercel' || github.ref) }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Resolve version, model, and release source
         id: meta
@@ -208,8 +208,7 @@ jobs:
               fi
             else
               git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
-              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
-              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+              git push origin "refs/tags/$TAG_NAME"
             fi
             echo "release_level=automatic" >> "$GITHUB_OUTPUT"
             echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
@@ -307,8 +306,7 @@ jobs:
               fi
             else
               git tag -a "$TAG_NAME" "$TARGET_SHA" -m "$APP $TAG_NAME"
-              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
-              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+              git push origin "refs/tags/$TAG_NAME"
             fi
             git checkout --detach "$TARGET_SHA"
             # Restore a canonical HTTPS remote after the PR-ref checkout; never embed
@@ -411,8 +409,7 @@ jobs:
             git add package.json package-lock.json
             if ! git diff --cached --quiet; then
               git commit -m "chore(release): bump app version to $EXPECTED_VERSION"
-              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
-              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "HEAD:refs/heads/$PRODUCTION_BRANCH"
+              git push origin "HEAD:refs/heads/$PRODUCTION_BRANCH"
             fi
             SOURCE_SHA="$(git rev-parse HEAD)"
             PACKAGE_VERSION="$(git show "$SOURCE_SHA:package.json" | jq -r '.version // empty')"
@@ -446,8 +443,7 @@ jobs:
               fi
             else
               git tag -a "$TAG_NAME" "$SOURCE_SHA" -m "$APP $TAG_NAME"
-              AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
-              git -c http.extraheader="AUTHORIZATION: basic $AUTH_HEADER" push origin "refs/tags/$TAG_NAME"
+              git push origin "refs/tags/$TAG_NAME"
             fi
             echo "release_level=$LEVEL" >> "$GITHUB_OUTPUT"
             echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
