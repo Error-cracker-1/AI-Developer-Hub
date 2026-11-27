@@ -1,0 +1,83 @@
+name: README Generator (AI Developer Hub)
+
+on:
+  push:
+    branches: ["deploy-vercel"]
+    paths-ignore:
+      - "README.md"
+      - ".github/**"
+  pull_request:
+    branches: ["deploy-vercel"]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - "README.md"
+      - ".github/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: readme-generator-deploy-vercel-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: Generate project README
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || 'deploy-vercel' }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Gemini SDK
+        run: python -m pip install --disable-pip-version-check --quiet google-genai
+
+      - name: Generate README from repository evidence
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_MODEL: ${{ vars.README_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET_BRANCH: "deploy-vercel"
+          BEFORE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python .github/scripts/generate_readme.py
+
+      - name: Validate generated README
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s README.md
+          git diff --check
+          changed="$(git diff --name-only)"
+          if [ -n "$changed" ] && [ "$changed" != "README.md" ]; then
+            echo "::error::Generator modified files other than README.md:"
+            echo "$changed"
+            exit 1
+          fi
+
+      - name: Commit README to source branch when changed
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.head_ref || 'deploy-vercel' }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- README.md; then
+            echo "README is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: generate project README"
+          git push origin "HEAD:${TARGET_BRANCH}"
