@@ -50,7 +50,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           TARGET_BRANCH: "deploy-vercel"
           BEFORE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || (github.event_name == 'push' && github.sha) || '' }}
         run: python .github/scripts/generate_readme.py
 
       - name: Validate generated README
